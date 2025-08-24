@@ -1,0 +1,1 @@
+// This log file may be handled after week 8  as improvement of the project (NOT URGENT!)
