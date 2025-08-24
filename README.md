@@ -1,3 +1,7 @@
+# Current UI design
+
+<img width="2380" height="1115" alt="image" src="https://github.com/user-attachments/assets/dd3e76e6-b5ba-49d3-a1b4-350abc8b1162" />
+
 # Intro
 This guide should help get your own local VSCode Workspace setup with the required extensions for work within this ENGG2000/3000 Unit!
 
