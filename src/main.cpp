@@ -1,10 +1,10 @@
 #include <Arduino.h>
-#include "SocketServer.h"
+#include "WebSocketServer.h"
 #include "credentials.h"
 
 #define LED_BUILTIN 2
 
-SocketServer socketServer(1234);
+WebSocketServer wss(80);
 
 void setup() {
     Serial.begin(115200);
@@ -12,10 +12,10 @@ void setup() {
     Serial.println("======= ESP32 Starting Up =======");
     
     Serial.println("Establishing WiFi connection ->");
-    socketServer.beginWiFi(WIFI_SSID, WIFI_PASSWORD);
+    wss.beginWiFi(WIFI_SSID, WIFI_PASSWORD);
     
     Serial.println("Starting socket server ->");
-    socketServer.startServer();
+    wss.startServer();
     
     pinMode(LED_BUILTIN, OUTPUT);
     Serial.println("Setup complete :)");
@@ -23,8 +23,7 @@ void setup() {
 }
 
 void loop() {
-    socketServer.handleClients();
-    socketServer.checkWiFiStatus();
+    wss.checkWiFiStatus();
     digitalWrite(LED_BUILTIN, HIGH);
     delay(2000);
     digitalWrite(LED_BUILTIN, LOW);
