@@ -37,54 +37,156 @@ void WebSocketServer::startServer() {
     Serial.println("/ws");
 }
 
+void WebSocketServer::fillBridgeStatus(JsonObject obj) {
+    obj["state"] = bridgeState;
+    obj["lastChangeMs"] = bridgeLastChangeMs;
+    obj["lockEngaged"] = lockEngaged;
+}
+
+void WebSocketServer::fillTrafficStatus(JsonObject obj) {
+    obj["left"]  = trafficLeft;
+    obj["right"] = trafficRight;
+}
+
+void WebSocketServer::fillSystemStatus(JsonObject obj) {
+    obj["connection"] = "CONNECTED";
+    obj["rssi"] = WiFi.RSSI();
+    obj["uptimeMs"] = millis();
+}
+
+void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, const String& path,
+                             std::function<void(JsonObject)> fillPayload) {
+    StaticJsonDocument<512> doc;
+    doc["v"] = 1;
+    doc["id"] = id;
+    doc["type"] = "response";
+    doc["ok"] = true;
+    doc["path"] = path;
+    if (fillPayload) {
+        JsonObject payload = doc.createNestedObject("payload");
+        fillPayload(payload);
+    }
+    String out; serializeJson(doc, out);
+    client->text(out);
+
+    Serial.printf("[WS][TX][OK] Client %u <- %s\n", client->id(), path.c_str());
+    Serial.println(out);
+}
+
+void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, const String& path, const String& msg) {
+    StaticJsonDocument<384> doc;
+    doc["v"] = 1;
+    doc["id"] = id;
+    doc["type"] = "response";
+    doc["ok"] = false;
+    doc["path"] = path;
+    doc["error"] = msg;
+    String out; serializeJson(doc, out);
+    client->text(out);
+
+    Serial.printf("[WS][TX][ERR] Client %u <- %s error=%s\n", client->id(), path.c_str(), msg.c_str());
+}
+
+void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, const String& path) {
+    if (path == "/bridge/status") {
+        sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
+    } else if (path == "/traffic/status") {
+        sendOk(client, id, path, [this](JsonObject p){ fillTrafficStatus(p); });
+    } else if (path == "/system/status") {
+        sendOk(client, id, path, [this](JsonObject p){ fillSystemStatus(p); });
+    } else if (path == "/system/ping") {
+        sendOk(client, id, path, [](JsonObject p){ p["nowMs"] = millis(); });
+    } else {
+        sendError(client, id, path, "Unknown GET path");
+    }
+}
+
+void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, const String& path, JsonVariant payload) {
+    if (path == "/bridge/state") {
+        const char* state = payload["state"] | nullptr;
+        if (!state) { sendError(client, id, path, "Missing 'state'"); return; }
+        String s = String(state);
+        if (s != "OPEN" && s != "CLOSED") { sendError(client, id, path, "Invalid state"); return; }
+
+        bridgeState = s;
+        lockEngaged = (s == "CLOSED");
+        bridgeLastChangeMs = millis();
+
+        sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
+
+    } else if (path == "/traffic/light") {
+        const char* side = payload["side"] | nullptr;
+        const char* value = payload["value"] | nullptr;
+        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+
+        String sd = String(side), v = String(value);
+        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        if (v != "RED" && v != "YELLOW" && v != "GREEN") { sendError(client, id, path, "Invalid value"); return; }
+
+        if (sd == "left") trafficLeft = v; else trafficRight = v;
+        sendOk(client, id, path, [this](JsonObject p){ fillTrafficStatus(p); });
+
+    } else {
+        sendError(client, id, path, "Unknown SET path");
+    }
+}
+
 void WebSocketServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, 
                                  AwsEventType type, void* arg, uint8_t* data, size_t len) {
     
     if (type == WS_EVT_CONNECT) {
         Serial.printf("Client %u connected\n", client->id());
-        client->text("{\"status\":\"connected\"}");
-    } else if (type == WS_EVT_DISCONNECT) {
+        return;
+    }
+    if (type == WS_EVT_DISCONNECT) {
         Serial.printf("Client %u disconnected\n", client->id());
-    } else if (type == WS_EVT_DATA) {
-        String msg = "";
-        for (size_t i = 0; i < len; i++) {
-            msg += (char)data[i];
-        }
-        Serial.printf("Received from client %u: %s\n", client->id(), msg.c_str());
+        return;
+    }
+    if (type != WS_EVT_DATA) return;
 
-        if (msg == "OPEN") {
-            client->text("{\"bridge\":\"opening\"}");
-        } else if (msg == "CLOSE") {
-            client->text("{\"bridge\":\"closing\"}");
-        } else {
-            client->text("{\"echo\":\"" + msg + "\"}");
-        }
+    AwsFrameInfo* info = (AwsFrameInfo*)arg;
+    if (!(info->final && info->index == 0 && info->len == len)) {
+        Serial.println("Fragmented frame ignored");
+        return;
+    }
+
+    StaticJsonDocument<768> doc;
+    DeserializationError err = deserializeJson(doc, data, len);
+    if (err) {
+        Serial.printf("JSON parse error: %s\n", err.c_str());
+        String id = doc["id"] | "";
+        String path = doc["path"] | "";
+        sendError(client, id, path.length() ? path : "/", "Invalid JSON");
+        return;
+    }
+
+    int v = doc["v"] | 1;
+    const char* typeStr = doc["type"] | "request";
+    String id = doc["id"] | "";
+    String method = doc["method"] | "";
+    String path = doc["path"] | "";
+    JsonVariant payload = doc["payload"];
+
+    if (v != 1) { 
+        sendError(client, id, path, "Unsupported protocol version"); 
+        return; 
+    }
+    if (String(typeStr) != "request") { 
+        return; 
+    }
+
+    if (method == "GET") {
+        Serial.printf("[WS][RX] Client %u -> GET %s\n", client->id(), path.c_str());
+        handleGet(client, id, path);
+    }
+    else if (method == "SET") {
+        Serial.printf("[WS][RX] Client %u -> SET %s\n", client->id(), path.c_str());
+        handleSet(client, id, path, payload);
+    }
+    else {
+        sendError(client, id, path, "Unknown method");
     }
 }
-
-// void SocketServer::handleClients() {
-//     WiFiClient client = server.available();
-//     if (client) {
-//         Serial.println("New client connected!");
-//         Serial.print("Client IP: ");
-//         Serial.println(client.remoteIP());
-        
-//         while (client.connected()) {
-//             if (client.available()) {
-//                 String msg = client.readStringUntil('\n');
-//                 Serial.print("Received message: ");
-//                 Serial.println(msg);
-                
-//                 String response = "{\"status\":\"acknowledged\"}";
-//                 client.println(response);
-//                 Serial.print("Sent response: ");
-//                 Serial.println(response);
-//             }
-//         }
-//         client.stop();
-//         Serial.println("Client disconnected.");
-//     }
-// }
 
 void WebSocketServer::checkWiFiStatus() {
     unsigned long currentTime = millis();
