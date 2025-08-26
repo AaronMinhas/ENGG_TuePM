@@ -9,12 +9,14 @@ import { useEffect, useState } from "react";
 import {
   getESPClient,
   getBridgeStatus,
-  getTrafficStatus,
+  getCarTrafficStatus,
+  getBoatTrafficStatus,
   getSystemStatus,
   setBridgeState,
-  setTraffic,
+  setCarTraffic,
+  setBoatTraffic,
 } from "./lib/api";
-import type { BridgeStatus, TrafficStatus, SystemStatus } from "./lib/schema";
+import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus } from "./lib/schema";
 
 import TopNav from "./components/TopNav";
 import DashCard from "./components/DashCard";
@@ -22,63 +24,122 @@ import BridgeCard from "./components/BridgeCard";
 import ActivitySec from "./components/ActivitySec";
 
 function App() {
-  const [wsStatus, setWsStatus] = useState<"CONNECTING" | "OPEN" | "CLOSED">("CONNECTING");
+  const [packetsSent, setPacketsSent] = useState(0);
+  const [packetsReceived, setPacketsReceived] = useState(0);
+  const [lastSentAt, setLastSentAt] = useState<number | null>(null);
+  const [lastReceivedAt, setLastReceivedAt] = useState<number | null>(null);
+
+  const [wsStatus, setWsStatus] = useState<"Connecting" | "Open" | "Closed">("Connecting");
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
-  const [traffic, setTrafficState] = useState<TrafficStatus | null>(null);
+  const [carTraffic, setCarTrafficState] = useState<CarTrafficStatus | null>(null);
+  const [boatTraffic, setBoatTrafficState] = useState<BoatTrafficStatus | null>(null);
   const [system, setSystem] = useState<SystemStatus | null>(null);
 
   const handleFetchBridge = async () => {
     try {
+      setPacketsSent((prev) => prev + 1);
+      setLastSentAt(Date.now());
       const data = await getBridgeStatus();
-      setBridge(data);
+      setLastReceivedAt(Date.now());
+      setBridge({ ...data, receivedAt: Date.now() });
     } catch (e) {
       console.error("Bridge status error:", e);
     }
   };
 
-  const handleFetchTraffic = async () => {
+  const handleFetchCarTraffic = async () => {
     try {
-      const data = await getTrafficStatus();
-      setTrafficState(data);
+      setPacketsSent((prev) => prev + 1);
+      setLastSentAt(Date.now());
+      const data = await getCarTrafficStatus();
+      setPacketsReceived((prev) => prev + 1);
+      setLastReceivedAt(Date.now());
+      setCarTrafficState({ ...data, receivedAt: Date.now() });
     } catch (e) {
-      console.error("Traffic status error:", e);
+      console.error("Car traffic status error:", e);
+    }
+  };
+
+  const handleFetchBoatTraffic = async () => {
+    try {
+      setPacketsSent((prev) => prev + 1);
+      setLastSentAt(Date.now());
+      const data = await getBoatTrafficStatus();
+      setPacketsReceived((prev) => prev + 1);
+      setLastReceivedAt(Date.now());
+      setBoatTrafficState({ ...data, receivedAt: Date.now() });
+    } catch (e) {
+      console.error("Boat traffic status error:", e);
     }
   };
 
   const handleFetchSystem = async () => {
     try {
+      setPacketsSent((prev) => prev + 1);
+      setLastSentAt(Date.now());
       const data = await getSystemStatus();
-      setSystem(data);
+      setPacketsReceived((prev) => prev + 1);
+      setLastReceivedAt(Date.now());
+      setSystem({ ...data, receivedAt: Date.now() });
     } catch (e) {
       console.error("System status error:", e);
     }
   };
 
   const handleOpenBridge = async () => {
-    const data = await setBridgeState("OPEN");
-    setBridge(data);
+    setPacketsSent((prev) => prev + 1);
+    setLastSentAt(Date.now());
+    const data = await setBridgeState("Open");
+    setPacketsReceived((prev) => prev + 1);
+    setLastReceivedAt(Date.now());
+    setBridge({ ...data, receivedAt: Date.now() });
   };
 
   const handleCloseBridge = async () => {
-    const data = await setBridgeState("CLOSED");
-    setBridge(data);
+    setPacketsSent((prev) => prev + 1);
+    setLastSentAt(Date.now());
+    const data = await setBridgeState("Closed");
+    setPacketsReceived((prev) => prev + 1);
+    setLastReceivedAt(Date.now());
+    setBridge({ ...data, receivedAt: Date.now() });
   };
 
-  const handleTraffic = async (side: "left" | "right", color: "RED" | "YELLOW" | "GREEN") => {
-    const data = await setTraffic(side, color);
-    setTrafficState(data);
+  const handleCarTraffic = async (side: "left" | "right", colour: "Red" | "Yellow" | "Green") => {
+    setPacketsSent((prev) => prev + 1);
+    setLastSentAt(Date.now());
+    const data = await setCarTraffic(side, colour);
+    setPacketsReceived((prev) => prev + 1);
+    setLastReceivedAt(Date.now());
+    setCarTrafficState({ ...data, receivedAt: Date.now() });
+  };
+
+  const handleBoatTraffic = async (side: "left" | "right", colour: "Red" | "Green") => {
+    setPacketsSent((prev) => prev + 1);
+    setLastSentAt(Date.now());
+    const data = await setBoatTraffic(side, colour);
+    setPacketsReceived((prev) => prev + 1);
+    setLastReceivedAt(Date.now());
+    setBoatTrafficState({ ...data, receivedAt: Date.now() });
   };
 
   useEffect(() => {
-    const client = getESPClient("ws://192.168.0.173/ws");
+    // const client = getESPClient("ws://192.168.0.173/ws");
+    const client = getESPClient("ws://172.20.10.7/ws");
     client.onStatus(setWsStatus);
 
     const poll = async () => {
       try {
-        const [b, t, s] = await Promise.all([getBridgeStatus(), getTrafficStatus(), getSystemStatus()]);
-        setBridge(b);
-        setTrafficState(t);
-        setSystem(s);
+        const [b, ct, bt, s] = await Promise.all([
+          getBridgeStatus(),
+          getCarTrafficStatus(),
+          getBoatTrafficStatus(),
+          getSystemStatus(),
+        ]);
+        setPacketsReceived((prev) => prev + 4);
+        setBridge({ ...b, receivedAt: Date.now() });
+        setCarTrafficState({ ...ct, receivedAt: Date.now() });
+        setBoatTrafficState({ ...bt, receivedAt: Date.now() });
+        setSystem({ ...s, receivedAt: Date.now() });
       } catch (err) {
         console.error("Poll error:", err);
       }
@@ -94,14 +155,93 @@ function App() {
     <div className="bg-gray-100 min-h-screen w-full">
       <TopNav />
 
-      <div>
+      <div className="flex justify-center">
+        <div className="grid grid-cols-2 lg:grid-cols-4 lg:grid-rows-4 gap-4 max-w-[1700px] w-full mx-4 mt-4">
+          <DashCard
+            title="Bridge State"
+            options={["Open", "Close"]}
+            description={bridge?.state || "..."}
+            updatedAt={timeAgo(bridge?.receivedAt)}
+            cardType="STATE"
+            iconType="BRIDGE"
+            bridgeStateType={bridge?.state || undefined}
+          />
+          <DashCard
+            title="Left Car Traffic"
+            options={["Red", "Yellow", "Green"]}
+            description={carTraffic?.left || "..."}
+            updatedAt={timeAgo(carTraffic?.left.receivedAt)}
+            cardType="STATE"
+            iconType="CAR"
+            carStateType={carTraffic?.left || undefined}
+          />
+          <DashCard
+            title="Left Boat Traffic"
+            options={["Red", "Green"]}
+            description={boatTraffic?.left || "..."}
+            updatedAt={timeAgo(boatTraffic?.left.receivedAt)}
+            cardType="STATE"
+            iconType="BOAT"
+            boatStateType={boatTraffic?.left || undefined}
+          />
+          <ActivitySec />
+
+          <DashCard
+            title="System State"
+            options={["Connect", "Disconnect"]}
+            description={system?.connection || "..."}
+            updatedAt={timeAgo(system?.receivedAt)}
+            cardType="STATE"
+            iconType="SYSTEM"
+            systemStateType={system?.connection || undefined}
+          />
+
+          <DashCard
+            title="Right Car Traffic"
+            options={["Red", "Yellow", "Green"]}
+            description={carTraffic?.right || "..."}
+            updatedAt={timeAgo(carTraffic?.right.receivedAt)}
+            cardType="STATE"
+            iconType="CAR"
+            carStateType={carTraffic?.right || undefined}
+          />
+          <DashCard
+            title="Right Boat Traffic"
+            options={["Red", "Green"]}
+            description={boatTraffic?.right || "..."}
+            updatedAt={timeAgo(boatTraffic?.right.receivedAt)}
+            cardType="STATE"
+            iconType="BOAT"
+            boatStateType={boatTraffic?.right || undefined}
+          />
+
+          <DashCard
+            title="Packets Sent"
+            description={packetsSent.toString()}
+            updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
+            iconType="PACKETS_SEND"
+          />
+          <BridgeCard />
+          <DashCard
+            title="Packets Received"
+            description={packetsReceived.toString()}
+            updatedAt={lastReceivedAt ? timeAgo(lastReceivedAt) : ""}
+            iconType="PACKETS_REC"
+          />
+        </div>
+      </div>
+
+      {/* Turn into dropdown buttons */}
+      {/* <div className="mt-20">
         <p>
           <strong>WebSocket:</strong> {wsStatus}
         </p>
         <button className="px-3 py-1 m-1 bg-gray-200 rounded" onClick={handleFetchSystem}>
           Get System Status
         </button>
-        {system && <pre className="bg-gray-100 p-2 rounded mt-2">{JSON.stringify(system, null, 2)}</pre>}
+        {system && (
+          <pre className="bg-gray-100 p-2 rounded mt-2">{JSON.stringify(system, null, 2)}</pre>
+        )}
       </div>
 
       <p>
@@ -116,62 +256,28 @@ function App() {
       <button className="px-3 py-1 m-1 bg-gray-200 rounded" onClick={handleFetchBridge}>
         Get Bridge Status
       </button>
-      {bridge && <pre className="bg-gray-100 p-2 rounded mt-2">{JSON.stringify(bridge, null, 2)}</pre>}
-
-      <div className="flex justify-center">
-        <div className="grid grid-cols-4 grid-rows-4 gap-4 max-w-[1700px] w-full mx-4 mt-4">
-          <DashCard
-            title="Bridge State"
-            description="Closed"
-            updatedAt="3 minutes ago"
-            cardType="STATE"
-            iconType="BRIDGE"
-            bridgeStateType="CLOSED"
-          />
-          <DashCard
-            title="Car Traffic"
-            description="Green"
-            updatedAt="3 minutes ago"
-            cardType="STATE"
-            iconType="CAR"
-            carStateType="GREEN"
-          />
-          <DashCard
-            title="Boat Traffic"
-            description="Red"
-            updatedAt="3 minutes ago"
-            cardType="STATE"
-            iconType="BOAT"
-            boatStateType="RED"
-          />
-          <ActivitySec />
-
-          <DashCard
-            title="System State"
-            description="Connected"
-            updatedAt="3 minutes ago"
-            cardType="STATE"
-            iconType="SYSTEM"
-            systemStateType="CONNECTED"
-          />
-          <BridgeCard />
-
-          <DashCard
-            title="Packets Sent"
-            description="403"
-            updatedAt="3 minutes ago"
-            iconType="PACKETS_SEND"
-          />
-          <DashCard
-            title="Packets Received"
-            description="394"
-            updatedAt="3 minutes ago"
-            iconType="PACKETS_REC"
-          />
-        </div>
-      </div>
+      {bridge && (
+        <pre className="bg-gray-100 p-2 rounded mt-2">{JSON.stringify(bridge, null, 2)}</pre>
+      )} */}
     </div>
   );
+}
+
+function timeAgo(timestampMs: number): string {
+  const now = Date.now();
+  const diffMs = now - timestampMs;
+  const diffSec = Math.floor(diffMs / 1000);
+
+  if (diffSec < 60) return `${diffSec} second${diffSec !== 1 ? "s" : ""} ago`;
+
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? "s" : ""} ago`;
+
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hour${diffHr !== 1 ? "s" : ""} ago`;
+
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 }
 
 export default App;

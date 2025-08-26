@@ -14,27 +14,30 @@ export class ESPWebSocketClient {
   private reconnectAttempts = 0;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPong = Date.now();
-  private statusListener?: (s: "OPEN" | "CLOSED" | "CONNECTING") => void;
+  private statusListener?: (s: "Open" | "Closed" | "Connecting") => void;
 
   constructor(url: string) {
     this.url = url;
   }
 
-  onStatus(listener: (s: "OPEN" | "CLOSED" | "CONNECTING") => void) {
+  onStatus(listener: (s: "Open" | "Closed" | "Connecting") => void) {
     this.statusListener = listener;
   }
 
   connect() {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING))
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    )
       return;
 
-    this.notifyStatus("CONNECTING");
+    this.notifyStatus("Connecting");
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
       this.setupHeartbeat();
-      this.notifyStatus("OPEN");
+      this.notifyStatus("Open");
     };
 
     this.ws.onmessage = (ev) => {
@@ -50,7 +53,7 @@ export class ESPWebSocketClient {
     };
 
     this.ws.onclose = () => {
-      this.notifyStatus("CLOSED");
+      this.notifyStatus("Closed");
       this.clearHeartbeat();
       for (const [id, p] of this.pending) {
         clearTimeout(p.timer);
@@ -69,7 +72,7 @@ export class ESPWebSocketClient {
     this.ws = null;
   }
 
-  private notifyStatus(s: "OPEN" | "CLOSED" | "CONNECTING") {
+  private notifyStatus(s: "Open" | "Closed" | "Connecting") {
     this.statusListener?.(s);
   }
 
@@ -121,6 +124,9 @@ export class ESPWebSocketClient {
     timeoutMs?: number
   ) {
     const id = nanoid();
-    return this.sendRaw({ v: 1, id, type: "request", method, path, payload }, timeoutMs) as Promise<TResp>;
+    return this.sendRaw(
+      { v: 1, id, type: "request", method, path, payload },
+      timeoutMs
+    ) as Promise<TResp>;
   }
 }

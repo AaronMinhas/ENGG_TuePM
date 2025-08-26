@@ -43,7 +43,12 @@ void WebSocketServer::fillBridgeStatus(JsonObject obj) {
     obj["lockEngaged"] = lockEngaged;
 }
 
-void WebSocketServer::fillTrafficStatus(JsonObject obj) {
+void WebSocketServer::fillCarTrafficStatus(JsonObject obj) {
+    obj["left"]  = trafficLeft;
+    obj["right"] = trafficRight;
+}
+
+void WebSocketServer::fillBoatTrafficStatus(JsonObject obj) {
     obj["left"]  = trafficLeft;
     obj["right"] = trafficRight;
 }
@@ -90,8 +95,10 @@ void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, 
 void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, const String& path) {
     if (path == "/bridge/status") {
         sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
-    } else if (path == "/traffic/status") {
-        sendOk(client, id, path, [this](JsonObject p){ fillTrafficStatus(p); });
+    } else if (path == "/traffic/car/status") {
+        sendOk(client, id, path, [this](JsonObject p){ fillCarTrafficStatus(p); });
+    } else if (path == "/traffic/boat/status") {
+        sendOk(client, id, path, [this](JsonObject p){ fillBoatTrafficStatus(p); });
     } else if (path == "/system/status") {
         sendOk(client, id, path, [this](JsonObject p){ fillSystemStatus(p); });
     } else if (path == "/system/ping") {
@@ -220,6 +227,7 @@ void WebSocketServer::checkWiFiStatus() {
             WiFi.reconnect();
         } else {
             Serial.println("WiFi Status: Connected");
+            Serial.print(WiFi.localIP());
         }
     }
 }

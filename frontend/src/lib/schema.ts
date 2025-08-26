@@ -25,21 +25,39 @@ export const AnyInbound = ResponseMsg;
 export type RequestMsgT = z.infer<typeof RequestMsg>;
 export type ResponseMsgT = z.infer<typeof ResponseMsg>;
 
-export type BridgeState = "OPENING" | "CLOSING" | "OPEN" | "CLOSED" | "ERROR";
+export type BridgeState = "Opening" | "Closing" | "Open" | "Closed" | "Error";
 export interface BridgeStatus {
   state: BridgeState;
   lastChangeMs: number;
   lockEngaged: boolean;
+  receivedAt?: number;
 }
 
-export type TrafficLight = "RED" | "YELLOW" | "GREEN";
-export interface TrafficStatus {
-  left: TrafficLight;
-  right: TrafficLight;
+export type CarTrafficLight = "Red" | "Yellow" | "Green";
+export interface CarTrafficStatus {
+  left: CarTrafficLight;
+  right: CarTrafficLight;
+  receivedAt?: number;
+}
+
+export type BoatTrafficLight = "Red" | "Green";
+export interface BoatTrafficStatus {
+  left: BoatTrafficLight;
+  right: BoatTrafficLight;
+  receivedAt?: number;
 }
 
 export interface SystemStatus {
-  connection: "CONNECTED" | "CONNECTING" | "DISCONNECTED";
+  connection: "Connected" | "Connecting" | "Disconnected";
   rssi?: number;
   uptimeMs?: number;
+  receivedAt?: number;
 }
+
+export interface Timed<T> {
+  receivedAt: number;
+  data: T;
+}
+
+export type TimedCarTrafficStatus = Timed<CarTrafficStatus>;
+export type TimedBridgeStatus = Timed<BridgeStatus>;

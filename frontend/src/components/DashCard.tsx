@@ -4,24 +4,35 @@
  */
 
 import { Settings, Car, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
+import { CustomDropdown } from "./CustomDropdown";
 import BridgeIcon from "./BridgeIcon";
 
 type DashCardProp = {
   title: string;
   description: string;
+  options?: string[];
   updatedAt: string;
   cardType?: "STATE" | null;
-  iconType?: "BRIDGE" | "CAR" | "BOAT" | "SYSTEM" | "PACKETS_SEND" | "PACKETS_REC" | "ACTIVITY" | "";
-  bridgeStateType?: "OPENING" | "CLOSING" | "CLOSED";
-  systemStateType?: "CONNECTED" | "CONNECTING" | "DISCONNECTED";
-  carStateType?: "GREEN" | "YELLOW" | "RED";
-  boatStateType?: "GREEN" | "RED";
+  iconType?:
+    | "BRIDGE"
+    | "CAR"
+    | "BOAT"
+    | "SYSTEM"
+    | "PACKETS_SEND"
+    | "PACKETS_REC"
+    | "ACTIVITY"
+    | "";
+  bridgeStateType?: "Opening" | "Closing" | "Closed";
+  systemStateType?: "Connected" | "Connecting" | "Disconnected";
+  carStateType?: "Green" | "Yellow" | "Red";
+  boatStateType?: "Green" | "Red";
 };
 
 export default function DashCard(props: Readonly<DashCardProp>) {
   const {
     title,
     description,
+    options,
     updatedAt,
     cardType,
     iconType = "",
@@ -33,7 +44,12 @@ export default function DashCard(props: Readonly<DashCardProp>) {
 
   const Icon = iconMap[iconType] ?? (() => null);
 
-  const statusColour = getStateColour(carStateType, boatStateType, systemStateType, bridgeStateType);
+  const statusColour = getStateColour(
+    carStateType,
+    boatStateType,
+    systemStateType,
+    bridgeStateType
+  );
 
   return (
     <div className="w-full h-35 bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
@@ -43,17 +59,20 @@ export default function DashCard(props: Readonly<DashCardProp>) {
           <span className="font-semibold">{title}</span>
         </div>
 
-        <button className="cursor-pointer">
+        {/* <button className="cursor-pointer">
           <Settings size={20} />
-        </button>
+        </button> */}
       </div>
 
       <div>
         {cardType === "STATE" ? (
-          <div className="flex items-center gap-2">
-            <div className={`${statusColour} w-6 h-6 rounded-full`} />
-            <span className="text-2xl font-bold">{description}</span>
-          </div>
+          <CustomDropdown
+            options={options}
+            selected={description}
+            onSelect={(val) => {
+              // need a central var --> map it to thing
+            }}
+          />
         ) : (
           <span className="text-2xl font-bold">{description}</span>
         )}
@@ -83,41 +102,49 @@ function getStateColour(
 ) {
   if (carStateType) {
     switch (carStateType) {
-      case "GREEN":
+      case "Green":
         return "bg-green-500";
-      case "YELLOW":
+      case "Yellow":
         return "bg-yellow-400";
-      case "RED":
+      case "Red":
         return "bg-red-500";
     }
   }
   if (boatStateType) {
     switch (boatStateType) {
-      case "GREEN":
+      case "Green":
         return "bg-green-500";
-      case "RED":
+      case "Red":
         return "bg-red-500";
     }
   }
   if (systemStateType) {
     switch (systemStateType) {
-      case "CONNECTED":
+      case "Connected":
         return "bg-green-500";
-      case "CONNECTING":
+      case "Connecting":
         return "bg-blue-500";
-      case "DISCONNECTED":
+      case "Disconnected":
         return "bg-red-500";
     }
   }
   if (bridgeStateType) {
     switch (bridgeStateType) {
-      case "OPENING":
+      case "Opening":
         return "bg-orange-400";
-      case "CLOSING":
+      case "Closing":
         return "bg-yellow-400";
-      case "CLOSED":
+      case "Closed":
         return "bg-gray-400";
     }
   }
   return "bg-gray-400";
+}
+
+function Dropdown() {
+  return (
+    <div>
+      <div></div>
+    </div>
+  );
 }

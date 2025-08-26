@@ -38,6 +38,7 @@ private:
     void sendError(AsyncWebSocketClient* client, const String& id, const String& path, const String& msg);
 
     void fillBridgeStatus(JsonObject obj);
-    void fillTrafficStatus(JsonObject obj);
+    void fillCarTrafficStatus(JsonObject obj);
+    void fillBoatTrafficStatus(JsonObject obj);
     void fillSystemStatus(JsonObject obj);
 };
