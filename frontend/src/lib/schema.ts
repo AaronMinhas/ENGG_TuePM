@@ -33,18 +33,21 @@ export interface BridgeStatus {
   receivedAt?: number;
 }
 
+export interface TrafficLightStatus<TLight> {
+  value: TLight;
+  receivedAt?: number;
+}
+
 export type CarTrafficLight = "Red" | "Yellow" | "Green";
 export interface CarTrafficStatus {
-  left: CarTrafficLight;
-  right: CarTrafficLight;
-  receivedAt?: number;
+  left: TrafficLightStatus<CarTrafficLight>;
+  right: TrafficLightStatus<CarTrafficLight>;
 }
 
 export type BoatTrafficLight = "Red" | "Green";
 export interface BoatTrafficStatus {
-  left: BoatTrafficLight;
-  right: BoatTrafficLight;
-  receivedAt?: number;
+  left: TrafficLightStatus<BoatTrafficLight>;
+  right: TrafficLightStatus<BoatTrafficLight>;
 }
 
 export interface SystemStatus {

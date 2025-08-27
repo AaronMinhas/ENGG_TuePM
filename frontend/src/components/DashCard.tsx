@@ -3,26 +3,18 @@
  * Refer to the dashboard design in the repository README.
  */
 
-import { Settings, Car, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
-import { CustomDropdown } from "./CustomDropdown";
+import { Car, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
+import { CustomDropdown, DropdownOption } from "./CustomDropdown";
 import BridgeIcon from "./BridgeIcon";
 
 type DashCardProp = {
   title: string;
   description: string;
-  options?: string[];
+  options?: DropdownOption[];
   updatedAt: string;
   cardType?: "STATE" | null;
-  iconType?:
-    | "BRIDGE"
-    | "CAR"
-    | "BOAT"
-    | "SYSTEM"
-    | "PACKETS_SEND"
-    | "PACKETS_REC"
-    | "ACTIVITY"
-    | "";
-  bridgeStateType?: "Opening" | "Closing" | "Closed";
+  iconType?: "BRIDGE" | "CAR" | "BOAT" | "SYSTEM" | "PACKETS_SEND" | "PACKETS_REC" | "ACTIVITY" | "";
+  bridgeStateType?: "Opening" | "Closing" | "Open" | "Closed" | "Error";
   systemStateType?: "Connected" | "Connecting" | "Disconnected";
   carStateType?: "Green" | "Yellow" | "Red";
   boatStateType?: "Green" | "Red";
@@ -44,12 +36,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
 
   const Icon = iconMap[iconType] ?? (() => null);
 
-  const statusColour = getStateColour(
-    carStateType,
-    boatStateType,
-    systemStateType,
-    bridgeStateType
-  );
+  const statusColour = getStateColour(carStateType, boatStateType, systemStateType, bridgeStateType);
 
   return (
     <div className="w-full h-35 bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
@@ -66,13 +53,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
 
       <div>
         {cardType === "STATE" ? (
-          <CustomDropdown
-            options={options}
-            selected={description}
-            onSelect={(val) => {
-              // need a central var --> map it to thing
-            }}
-          />
+          <CustomDropdown options={options ?? []} selected={description} colour={statusColour} />
         ) : (
           <span className="text-2xl font-bold">{description}</span>
         )}
@@ -131,20 +112,14 @@ function getStateColour(
   if (bridgeStateType) {
     switch (bridgeStateType) {
       case "Opening":
-        return "bg-orange-400";
+        return "bg-orange-500";
       case "Closing":
         return "bg-yellow-400";
       case "Closed":
-        return "bg-gray-400";
+        return "bg-red-300";
+      case "Open":
+        return "bg-orange-300";
     }
   }
   return "bg-gray-400";
-}
-
-function Dropdown() {
-  return (
-    <div>
-      <div></div>
-    </div>
-  );
 }

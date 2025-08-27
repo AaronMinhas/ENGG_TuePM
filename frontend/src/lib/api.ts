@@ -3,8 +3,8 @@ import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus } 
 
 let client: ESPWebSocketClient | null = null;
 
-// export function getESPClient(url = "ws://192.168.0.173/ws") {
-export function getESPClient(url = "ws://172.20.10.7/ws") {
+export function getESPClient(url = "ws://192.168.0.173/ws") {
+  // export function getESPClient(url = "ws://172.20.10.7/ws") {
   if (!client) {
     client = new ESPWebSocketClient(url);
     client.connect();
@@ -28,10 +28,11 @@ export const setBridgeState = (state: "Open" | "Closed") =>
   });
 
 export const setCarTraffic = (side: "left" | "right", value: "Red" | "Yellow" | "Green") =>
-  getESPClient().request<
-    CarTrafficStatus,
-    { side: "left" | "right"; value: "Red" | "Yellow" | "Green" }
-  >("SET", "/traffic/car/light", { side, value });
+  getESPClient().request<CarTrafficStatus, { side: "left" | "right"; value: "Red" | "Yellow" | "Green" }>(
+    "SET",
+    "/traffic/car/light",
+    { side, value }
+  );
 
 export const setBoatTraffic = (side: "left" | "right", value: "Red" | "Green") =>
   getESPClient().request<BoatTrafficStatus, { side: "left" | "right"; value: "Red" | "Green" }>(

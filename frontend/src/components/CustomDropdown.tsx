@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 
-type CustomDropdownProps = {
-  options: string[];
-  onSelect: (value: string) => void;
-  selected?: string;
+export type DropdownOption = {
+  label: string;
+  action: () => void | Promise<void>;
 };
 
-export function CustomDropdown({ options, onSelect, selected }: CustomDropdownProps) {
+type CustomDropdownProps = {
+  options: DropdownOption[];
+  selected?: string;
+  colour?: string;
+};
+
+export function CustomDropdown({ options, selected, colour }: CustomDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -25,11 +30,16 @@ export function CustomDropdown({ options, onSelect, selected }: CustomDropdownPr
     <div ref={ref} className="relative w-full">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full bg-white group hover:bg-gray-100 rounded-md px-3 py-2 flex justify-between items-center border border-white hover:border-base-400"
+        className={`w-full bg-white group cursor-pointer hover:bg-gray-100 rounded-md px-3 py-2 flex justify-between items-center border border-base-200 lg:border-white hover:border-base-400 ${
+          open ? "outline-2 outline-blue-600" : ""
+        }`}
       >
-        <span>{selected || "Select..."}</span>
+        <div className="flex gap-2 items-center">
+          {colour && <span className={`w-5 h-5 rounded-full ${colour}`} />}
+          <span>{selected || "---"}</span>
+        </div>
         <ChevronDown
-          className={`opacity-0 group-hover:opacity-100 transition-transform ${
+          className={`opacity-100 lg:opacity-0 text-base-600 group-hover:opacity-100 transition-transform ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -39,14 +49,14 @@ export function CustomDropdown({ options, onSelect, selected }: CustomDropdownPr
         <ul className="absolute z-10 mt-1 w-full bg-white border border-base-400 rounded-md shadow-md">
           {options.map((opt) => (
             <li
-              key={opt}
+              key={opt.label}
               onClick={() => {
-                onSelect(opt);
+                opt.action();
                 setOpen(false);
               }}
               className="px-3 py-2 cursor-pointer hover:bg-gray-100 rounded-md"
             >
-              {opt}
+              {opt.label}
             </li>
           ))}
         </ul>

@@ -44,21 +44,30 @@ void WebSocketServer::fillBridgeStatus(JsonObject obj) {
 }
 
 void WebSocketServer::fillCarTrafficStatus(JsonObject obj) {
-    obj["left"]  = trafficLeft;
-    obj["right"] = trafficRight;
+    JsonObject left = obj.createNestedObject("left");
+    left["value"] = carTrafficLeft;
+    JsonObject right = obj.createNestedObject("right");
+    right["value"] = carTrafficRight;
 }
 
 void WebSocketServer::fillBoatTrafficStatus(JsonObject obj) {
-    obj["left"]  = trafficLeft;
-    obj["right"] = trafficRight;
+    JsonObject left = obj.createNestedObject("left");
+    left["value"] = boatTrafficLeft;
+    JsonObject right = obj.createNestedObject("right");
+    right["value"] = boatTrafficRight;
 }
 
 void WebSocketServer::fillSystemStatus(JsonObject obj) {
-    obj["connection"] = "CONNECTED";
+    obj["connection"] = "Connected";
     obj["rssi"] = WiFi.RSSI();
     obj["uptimeMs"] = millis();
 }
 
+/**
+ * This function is used to build and send a success JSON message back to the Frontend if the command was
+ * successful. To indicate that it was successful, we use "ok" = true, and include relevant fillPayload
+ * data and this function will only be called if the operation was successful.
+ */
 void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, const String& path,
                              std::function<void(JsonObject)> fillPayload) {
     StaticJsonDocument<512> doc;
@@ -92,6 +101,21 @@ void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, 
     Serial.printf("[WS][TX][ERR] Client %u <- %s error=%s\n", client->id(), path.c_str(), msg.c_str());
 }
 
+/**
+ * This function handles GET paths. These endpoints defined below handle requests from the frontend. Each endpoint
+ * is linked to a specific component that has their state saved in the StateWriter. Each endpoint must collect the
+ * current state from the StateWriter and then send it back to the frontend that called the GET request.
+ * 
+ * Currently we have these endpoints:
+ * 
+ *      /bridge/status
+ *      /traffic/car/status
+ *      /traffic/boat/status
+ *      /system/status
+ *      /system/ping
+ *
+ * The information received by these endpoints will then attempt to apply this to the BridgeStateMachine.
+ */
 void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, const String& path) {
     if (path == "/bridge/status") {
         sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
@@ -108,31 +132,55 @@ void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, 
     }
 }
 
+/**
+ * This function handles SET paths. These endpoints defined below determine what components are controlled
+ * by the frontend. Currently, we have these endpoints:
+ * 
+ *      /bridge/state
+ *      /traffic/car/light
+ *      /traffic/boat/light
+ *
+ * The information received by these endpoints will then attempt to apply this to the BridgeStateMachine.
+ */
 void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, const String& path, JsonVariant payload) {
     if (path == "/bridge/state") {
-        const char* state = payload["state"] | nullptr;
+        auto payloadObj = payload.as<JsonObject>();
+        const char* state = payloadObj["state"];
         if (!state) { sendError(client, id, path, "Missing 'state'"); return; }
         String s = String(state);
-        if (s != "OPEN" && s != "CLOSED") { sendError(client, id, path, "Invalid state"); return; }
+        if (s != "Open" && s != "Closed") { sendError(client, id, path, "Invalid state"); return; }
 
         bridgeState = s;
-        lockEngaged = (s == "CLOSED");
+        lockEngaged = (s == "Closed");
         bridgeLastChangeMs = millis();
 
         sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
 
-    } else if (path == "/traffic/light") {
-        const char* side = payload["side"] | nullptr;
-        const char* value = payload["value"] | nullptr;
+    } else if (path == "/traffic/car/light") {
+        auto payloadObj = payload.as<JsonObject>();
+        const char* side = payloadObj["side"];
+        const char* value = payloadObj["value"];
         if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
 
         String sd = String(side), v = String(value);
         if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
-        if (v != "RED" && v != "YELLOW" && v != "GREEN") { sendError(client, id, path, "Invalid value"); return; }
+        if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        if (sd == "left") trafficLeft = v; else trafficRight = v;
-        sendOk(client, id, path, [this](JsonObject p){ fillTrafficStatus(p); });
+        if (sd == "left") carTrafficLeft = v; else carTrafficRight = v;
+        sendOk(client, id, path, [this](JsonObject p){ fillCarTrafficStatus(p); });
 
+    } else if (path == "/traffic/boat/light") { 
+        auto payloadObj = payload.as<JsonObject>();
+        const char* side = payloadObj["side"];
+        const char* value = payloadObj["value"];
+        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+
+        String sd = String(side), v = String(value);
+        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        if (v != "Red" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
+
+        if (sd == "left") boatTrafficLeft = v; else boatTrafficRight = v;
+        sendOk(client, id, path, [this](JsonObject p){ fillBoatTrafficStatus(p); });
     } else {
         sendError(client, id, path, "Unknown SET path");
     }

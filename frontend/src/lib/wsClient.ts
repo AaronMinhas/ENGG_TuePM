@@ -25,10 +25,7 @@ export class ESPWebSocketClient {
   }
 
   connect() {
-    if (
-      this.ws &&
-      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
-    )
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING))
       return;
 
     this.notifyStatus("Connecting");
@@ -113,7 +110,10 @@ export class ESPWebSocketClient {
         reject(new Error(`Timeout waiting for ${msg.path}`));
       }, timeoutMs);
       this.pending.set(msg.id, { resolve, reject, timer });
-      this.ws!.send(JSON.stringify(msg));
+      // this.ws!.send(JSON.stringify(msg));
+      const out = JSON.stringify(msg);
+      // console.log("[WS][TX]", out);
+      this.ws!.send(out);
     });
   }
 
@@ -124,9 +124,6 @@ export class ESPWebSocketClient {
     timeoutMs?: number
   ) {
     const id = nanoid();
-    return this.sendRaw(
-      { v: 1, id, type: "request", method, path, payload },
-      timeoutMs
-    ) as Promise<TResp>;
+    return this.sendRaw({ v: 1, id, type: "request", method, path, payload }, timeoutMs) as Promise<TResp>;
   }
 }

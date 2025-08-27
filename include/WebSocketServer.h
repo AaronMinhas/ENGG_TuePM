@@ -17,12 +17,13 @@ private:
     uint16_t port;
     unsigned long lastStatusCheck;
 
-    String bridgeState = "CLOSED";   
+    String bridgeState = "Closed";   
     bool lockEngaged = true;
     uint32_t bridgeLastChangeMs = 0;
 
-    String trafficLeft  = "RED";
-    String trafficRight = "RED";
+    // These need to grab the state from the StateWriter --> e.g. carTrafficLeft = StateWriter.carTrafficLeft.RED
+    String carTrafficLeft, carTrafficRight;
+    String boatTrafficLeft, boatTrafficRight;
 
     void handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient* client, 
                        AwsEventType type, void* arg, uint8_t* data, size_t len);
