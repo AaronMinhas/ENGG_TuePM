@@ -1,6 +1,7 @@
 #include "WebSocketServer.h"
 
-WebSocketServer::WebSocketServer(uint16_t port) : server(port), ws("/ws"), port(port), lastStatusCheck(0) {}
+WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter) 
+    : server(port), ws("/ws"), port(port), lastStatusCheck(0), state_(stateWriter) {}
 
 void WebSocketServer::beginWiFi(const char* ssid, const char* password) {
     Serial.print("Connecting to WiFi network: ");
@@ -38,29 +39,19 @@ void WebSocketServer::startServer() {
 }
 
 void WebSocketServer::fillBridgeStatus(JsonObject obj) {
-    obj["state"] = bridgeState;
-    obj["lastChangeMs"] = bridgeLastChangeMs;
-    obj["lockEngaged"] = lockEngaged;
+    state_.fillBridgeStatus(obj);
 }
 
 void WebSocketServer::fillCarTrafficStatus(JsonObject obj) {
-    JsonObject left = obj.createNestedObject("left");
-    left["value"] = carTrafficLeft;
-    JsonObject right = obj.createNestedObject("right");
-    right["value"] = carTrafficRight;
+    state_.fillCarTrafficStatus(obj);
 }
 
 void WebSocketServer::fillBoatTrafficStatus(JsonObject obj) {
-    JsonObject left = obj.createNestedObject("left");
-    left["value"] = boatTrafficLeft;
-    JsonObject right = obj.createNestedObject("right");
-    right["value"] = boatTrafficRight;
+    state_.fillBoatTrafficStatus(obj);
 }
 
 void WebSocketServer::fillSystemStatus(JsonObject obj) {
-    obj["connection"] = "Connected";
-    obj["rssi"] = WiFi.RSSI();
-    obj["uptimeMs"] = millis();
+    state_.fillSystemStatus(obj);
 }
 
 /**
@@ -144,42 +135,43 @@ void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, 
  */
 void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, const String& path, JsonVariant payload) {
     if (path == "/bridge/state") {
-        auto payloadObj = payload.as<JsonObject>();
-        const char* state = payloadObj["state"];
-        if (!state) { sendError(client, id, path, "Missing 'state'"); return; }
-        String s = String(state);
-        if (s != "Open" && s != "Closed") { sendError(client, id, path, "Invalid state"); return; }
+        // auto payloadObj = payload.as<JsonObject>();
+        // const char* state = payloadObj["state"];
+        // if (!state) { sendError(client, id, path, "Missing 'state'"); return; }
+        // String s = String(state);
+        // if (s != "Open" && s != "Closed") { sendError(client, id, path, "Invalid state"); return; }
 
-        bridgeState = s;
-        lockEngaged = (s == "Closed");
-        bridgeLastChangeMs = millis();
+        // bridgeState = s;
+        // lockEngaged = (s == "Closed");
+        // bridgeLastChangeMs = millis();
 
         sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
 
     } else if (path == "/traffic/car/light") {
-        auto payloadObj = payload.as<JsonObject>();
-        const char* side = payloadObj["side"];
-        const char* value = payloadObj["value"];
-        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+        // auto payloadObj = payload.as<JsonObject>();
+        // const char* side = payloadObj["side"];
+        // const char* value = payloadObj["value"];
+        // if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
 
-        String sd = String(side), v = String(value);
-        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
-        if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
+        // String sd = String(side), v = String(value);
+        // if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        // if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        if (sd == "left") carTrafficLeft = v; else carTrafficRight = v;
+        // if (sd == "left") carTrafficLeft = v; else carTrafficRight = v;
+
         sendOk(client, id, path, [this](JsonObject p){ fillCarTrafficStatus(p); });
 
     } else if (path == "/traffic/boat/light") { 
-        auto payloadObj = payload.as<JsonObject>();
-        const char* side = payloadObj["side"];
-        const char* value = payloadObj["value"];
-        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+        // auto payloadObj = payload.as<JsonObject>();
+        // const char* side = payloadObj["side"];
+        // const char* value = payloadObj["value"];
+        // if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
 
-        String sd = String(side), v = String(value);
-        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
-        if (v != "Red" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
+        // String sd = String(side), v = String(value);
+        // if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        // if (v != "Red" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        if (sd == "left") boatTrafficLeft = v; else boatTrafficRight = v;
+        // if (sd == "left") boatTrafficLeft = v; else boatTrafficRight = v;
         sendOk(client, id, path, [this](JsonObject p){ fillBoatTrafficStatus(p); });
     } else {
         sendError(client, id, path, "Unknown SET path");

@@ -3,21 +3,26 @@
 #include <AsyncUDP.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include "StateWriter.h"
 
 class WebSocketServer {
 public:
-    WebSocketServer(uint16_t port);
+    WebSocketServer(uint16_t port, StateWriter& StateWriter);
+
     void beginWiFi(const char* ssid, const char* password);
     void startServer();
     void handleClients();
     void checkWiFiStatus();
+
 private:
+    StateWriter& state_;
+
     AsyncWebServer server;
     AsyncWebSocket ws;
     uint16_t port;
     unsigned long lastStatusCheck;
 
-    String bridgeState = "Closed";   
+    String bridgeState = "Closed";
     bool lockEngaged = true;
     uint32_t bridgeLastChangeMs = 0;
 
