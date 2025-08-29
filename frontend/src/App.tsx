@@ -230,12 +230,8 @@ function App() {
         setCarTrafficState({
           left: { ...ct.left, receivedAt: Date.now() },
           right: { ...ct.right, receivedAt: Date.now() },
-          // left: { ...normTraffic(ct.left), receivedAt: Date.now() },
-          // right: { ...normTraffic(ct.right), receivedAt: Date.now() },
         });
         setBoatTrafficState({
-          // left: { ...normTraffic(bt.left), receivedAt: Date.now() },
-          // right: { ...normTraffic(bt.right), receivedAt: Date.now() },
           left: { ...bt.left, receivedAt: Date.now() },
           right: { ...bt.right, receivedAt: Date.now() },
         });
