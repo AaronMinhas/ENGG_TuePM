@@ -112,39 +112,50 @@ void EventBus::unsubscribe(BridgeEvent eventType, std::function<void(EventData*)
 }
 
 void EventBus::processEvents() {
-    // This method should:
-    // 1. Get events from the queue (with appropriate locking)
-    // 2. For each event, find subscribers and call their callbacks
-    // 3. Process EMERGENCY events before NORMAL events
-    
-    // IMPORTANT: Use mutex to protect access to event queue and subscribers map
-    // std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
-    // std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
-    
-    // Event processing logic here
+    // Lock both event queue and subscribers for thread safety
+    std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
+    std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
+
+    // Process events in the queue
+    while (!eventQueue.empty()) {
+        // 1. Get events from the queue (with appropriate locking)
+        QueuedEvent event = eventQueue.front();
+        eventQueue.erase(eventQueue.begin());
+
+        // 2. For each event, find subscribers and call their callbacks
+        auto subIt = subscribers.find(event.eventType);
+        if (subIt != subscribers.end()) {
+            for (const auto& subscription : subIt->second) {
+                // Callback
+                if (subscription.callback) {
+                    subscription.callback(event.eventData);
+                }
+            }
+        }
+        // Delete event data if dynamically allocated
+        delete event.eventData;
+    }
 }
 
 void EventBus::clear() {
-    // This method should:
-    // 1. Clear the event queue
-    // 2. Optionally clear all subscriptions
-    
-    // IMPORTANT: Use mutex to protect access to event queue and subscribers map
-    // std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
-    // std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
-    
-    // Clear logic here
+    // Lock both event queue and subscribers for thread safety
+    std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
+    std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
+
+    // Delete all pending events in the queue
+    for (auto& event : eventQueue) {
+        delete event.eventData;
+        event.eventData = nullptr;
+    }
+    eventQueue.clear();
+
+    // Clear all subscribers
+    subscribers.clear();
 }
 
 bool EventBus::hasSubscriptions(BridgeEvent eventType) const {
-    // This method should:
-    // 1. Check if the event type has any subscribers
-    // 2. Return true if it does, false otherwise
-    
-    // IMPORTANT: Use mutex to protect access to subscribers map
-    // std::lock_guard<std::mutex> lock(subscribers_mutex);
-    
-    // Check logic here
-    
-    return false; // Placeholder return value
+    std::lock_guard<std::mutex> lock(subscribers_mutex);
+
+    auto it = subscribers.find(eventType);
+    return (it != subscribers.end() && !it->second.empty());
 }

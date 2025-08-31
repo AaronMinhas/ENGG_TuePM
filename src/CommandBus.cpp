@@ -11,61 +11,56 @@ CommandBus::CommandBus() {
 CommandBus::~CommandBus() {
     // Acquire lock before modifying shared data structure
     std::lock_guard<std::mutex> lock(bus_mutex);
-    
-    // cleanup code here
+
+    // There's no specific resource to release, so this is just a safety step.
+    // If subscribers need explicit cleanup, you can iterate and call delete for each one.
+    subscribers.clear();  // Clear all subscriptions (if required)
 }
 
 void CommandBus::publish(const Command& command) {
-    // This method should:
-    // 1. Find subscribers for the command's target
-    // 2. Make a local copy of callbacks (to minimize lock duration)
-    // 3. Call each subscriber's callback with the command
-    
-    // IMPORTANT: Use mutex to protect access to subscribers map
-    // std::lock_guard<std::mutex> lock(bus_mutex);
-    
-    // Publishing logic here
+    // Lock the subscribers map for thread safety
+    std::lock_guard<std::mutex> lock(bus_mutex);
+
+    // Find subscribers for the command's target
+    auto it = subscribers.find(command.target);
+    if (it != subscribers.end()) {
+        // Make a local copy of callbacks to minimize lock duration
+        auto callbacks = it->second;
+        // Call each subscriber's callback with the command
+        for (const auto& callback : callbacks) {
+            if (callback) {
+                callback(command);
+            }
+        }
+    }
 }
 
 void CommandBus::subscribe(CommandTarget target, std::function<void(const Command&)> callback) {
-    // This method should:
+    // Lock the subscribers map for thread safety
+    std::lock_guard<std::mutex> lock(bus_mutex);
+
     // Add the callback to the list of subscribers for the target
-    
-    // IMPORTANT: Use mutex to protect access to subscribers map
-    // std::lock_guard<std::mutex> lock(bus_mutex);
-    
-    // Subscription logic here
+    subscribers[target].push_back(callback);
 }
 
 void CommandBus::unsubscribe(CommandTarget target) {
-    // This method should:
+    // Lock the subscribers map for thread safety
+    std::lock_guard<std::mutex> lock(bus_mutex);
+
     // Remove all subscriptions for the target
-    
-    // IMPORTANT: Use mutex to protect access to subscribers map
-    // std::lock_guard<std::mutex> lock(bus_mutex);
-    
-    // Unsubscribe logic here
+    subscribers.erase(target);
 }
 
 bool CommandBus::hasSubscribers(CommandTarget target) const {
-    // This method should:
-    // 1. Check if the target has any subscribers
-    // 2. Return true if it does, false otherwise
-    
-    // IMPORTANT: Use mutex to protect access to subscribers map
-    // std::lock_guard<std::mutex> lock(bus_mutex);
-    
-    // Check logic here
-    
-    return false; // Placeholder return value
+   std::lock_guard<std::mutex> lock(bus_mutex);
+
+    auto it = subscribers.find(target);
+    return (it != subscribers.end() && !it->second.empty());
 }
 
 void CommandBus::clear() {
-    // This method should:
-    // 1. Remove all subscriptions from all targets
-    
-    // IMPORTANT: Use mutex to protect access to subscribers map
-    // std::lock_guard<std::mutex> lock(bus_mutex);
-    
-    // Clear logic here
+   std::lock_guard<std::mutex> lock(bus_mutex);
+
+    // Remove all subscriptions from all targets
+    subscribers.clear();
 }

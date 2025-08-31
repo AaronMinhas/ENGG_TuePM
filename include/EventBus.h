@@ -1,6 +1,12 @@
 #pragma once
 
-#include <Arduino.h>
+#ifdef UNIT_TEST
+// For unit testing, Arduino header is not needed.
+
+#else
+    #include <Arduino.h>
+#endif
+
 #include <map>
 #include <vector>
 #include <functional>
