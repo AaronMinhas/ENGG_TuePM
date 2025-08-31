@@ -91,23 +91,13 @@ void EventBus::unsubscribe(BridgeEvent eventType, std::function<void(EventData*)
      // Lock the subscribers map for thread safety
     std::lock_guard<std::mutex> lock(subscribers_mutex);
 
-    // Find the event type in the subscribers map
+    // Since std::function comparison is not supported on ESP32,
+    // We now remove all subscribers for this event type
+    // This works for our use case where we subscribe once and don't unsubscribe.
     auto it = subscribers.find(eventType);
     if (it != subscribers.end()) {
-        // Remove the callback from the list
-        auto& vec = it->second;
-        vec.erase(
-            std::remove_if(vec.begin(), vec.end(),
-                [&](const EventSubscription& sub) {
-                    // Compare target type and address for std::function
-                    return sub.callback.target_type() == callback.target_type();
-                }),
-            vec.end()
-        );
-        // If no more subscribers for this event, remove the key from the map
-        if (vec.empty()) {
-            subscribers.erase(it);
-        }
+        subscribers.erase(it);
+        Serial.println("EventBus: Removed all subscribers for event type");
     }
 }
 
