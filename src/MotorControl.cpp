@@ -16,7 +16,7 @@ void MotorControl::raiseBridge() {
    Serial.println("MOTOR CONTROL: Action complete. Publish success event.");
 
     // publish success event
-    m_eventBus.publish(BridgeEvent::BRIDGE_OPENED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::BRIDGE_OPENED_SUCCESS, nullptr);
 }
 
 void MotorControl::lowerBridge() {
@@ -28,7 +28,7 @@ void MotorControl::lowerBridge() {
    Serial.println("MOTOR CONTROL: Action complete. Publish success event.");
 
     // publish success event
-    m_eventBus.publish(BridgeEvent::BRIDGE_CLOSED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::BRIDGE_CLOSED_SUCCESS, nullptr);
 }
 
 void MotorControl::halt() {

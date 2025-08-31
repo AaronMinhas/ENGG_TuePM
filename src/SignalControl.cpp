@@ -15,7 +15,7 @@ void SignalControl::stopTraffic() {
     
     // Publish success event
     Serial.println("SIGNAL_CONTROL: Traffic stopped successfully");
-    m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, nullptr);
 }
 
 void SignalControl::resumeTraffic() {
@@ -27,7 +27,7 @@ void SignalControl::resumeTraffic() {
     
     // Publish success event
     Serial.println("SIGNAL_CONTROL: Traffic resumed successfully");
-    m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS, nullptr);
 }
 
 void SignalControl::halt() {

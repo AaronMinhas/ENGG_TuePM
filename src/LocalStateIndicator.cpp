@@ -15,7 +15,7 @@ void LocalStateIndicator::setState() {
   
     // Publish success event
     Serial.println("LOCAL_STATE_INDICATOR: State display updated successfully");
-    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS);
+    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, nullptr);
 }
 
 void LocalStateIndicator::halt() {
