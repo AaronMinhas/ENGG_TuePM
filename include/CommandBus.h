@@ -1,7 +1,13 @@
 #pragma once  // Header guard: ensures this file is included only once per compilation
 
+#ifdef UNIT_TEST
+// For unit testing, Arduino header is not needed.
+
+#else
+    #include <Arduino.h>
+#endif
+
 // Standard library includes (from C++ Standard Library namespace "std")
-#include <Arduino.h>       // Arduino/ESP32 core functionality
 #include <map>             // For std::map (key-value storage, like HashMap in Java)
 #include <vector>          // For std::vector (dynamic array, like ArrayList in Java)
 #include <functional>      // For std::function (storing callbacks/function pointers)
