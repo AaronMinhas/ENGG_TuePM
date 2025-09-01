@@ -30,24 +30,18 @@ void Controller::subscribeToCommands() {
 }
 
 void Controller::handleCommand(const Command& command) {
-    Serial.print("CONTROLLER: Processing command - Target: ");
-    Serial.print((int)command.target);
-    Serial.print(", Action: ");
-    Serial.println((int)command.action);
-
+    // Remove verbose logging
     switch (command.target) {
         case CommandTarget::MOTOR_CONTROL:
             switch (command.action) {
                 case CommandAction::RAISE_BRIDGE:
-                    Serial.println("CONTROLLER: Calling MotorControl::raiseBridge()");
                     m_motorControl.raiseBridge();
                     break;
                 case CommandAction::LOWER_BRIDGE:
-                    Serial.println("CONTROLLER: Calling MotorControl::lowerBridge()");
                     m_motorControl.lowerBridge();
                     break;
                 default:
-                    Serial.println("CONTROLLER: Unknown action for MOTOR_CONTROL");
+                    Serial.println("CONTROLLER: Unknown motor action");
                     break;
             }
             break;
@@ -55,11 +49,9 @@ void Controller::handleCommand(const Command& command) {
         case CommandTarget::SIGNAL_CONTROL:
             switch (command.action) {
                 case CommandAction::STOP_TRAFFIC:
-                    Serial.println("CONTROLLER: Calling SignalControl::stopTraffic()");
                     m_signalControl.stopTraffic();
                     break;
                 case CommandAction::RESUME_TRAFFIC:
-                    Serial.println("CONTROLLER: Calling SignalControl::resumeTraffic()");
                     m_signalControl.resumeTraffic();
                     break;
                 case CommandAction::SET_CAR_LIGHT_LEFT:

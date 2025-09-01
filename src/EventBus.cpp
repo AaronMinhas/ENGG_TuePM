@@ -129,26 +129,18 @@ void EventBus::processEvents() {
         eventQueue.erase(eventQueue.begin());
 
         // 2. For each event, find subscribers and call their callbacks
-        Serial.printf("DEBUG: Processing event type %d\n", (int)event.eventType);
-        
         auto subIt = subscribers.find(event.eventType);
         if (subIt != subscribers.end()) {
-            Serial.printf("DEBUG: Found %d subscribers for event type %d\n", subIt->second.size(), (int)event.eventType);
+            // Only log events that have actual impact (non-debug events)
+            if ((int)event.eventType < 16) { // Log important events only
+                Serial.printf("EVENT: Type %d → %d subscribers\n", (int)event.eventType, subIt->second.size());
+            }
             
             for (const auto& subscription : subIt->second) {
-                Serial.println("DEBUG: About to call subscriber callback");
-                
-                // Callback
                 if (subscription.callback) {
-                    Serial.println("DEBUG: Callback is valid, calling now");
                     subscription.callback(event.eventData);
-                    Serial.println("DEBUG: Callback completed successfully");
-                } else {
-                    Serial.println("DEBUG: Callback is null, skipping");
                 }
             }
-        } else {
-            Serial.printf("DEBUG: No subscribers found for event type %d\n", (int)event.eventType);
         }
         
         // Clean up event data if provided

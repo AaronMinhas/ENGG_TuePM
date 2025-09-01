@@ -51,6 +51,9 @@ void controlLogicTask(void* parameters) {
     while (true) {
         systemEventBus.processEvents();
         
+        // Check for motor test commands via serial
+        motorControl.checkSerialCommands();
+        
         // TODO: Monitor sensors
         // detectionSystem.checkSensors();
         
@@ -97,6 +100,9 @@ void setup() {
     
     Serial.println("Initialising EventBus and CommandBus..."); // Setup above
     Serial.println("Initialising subsystems..."); // All subsystems handle initialisation internally
+    
+    Serial.println("Initialising Motor Control...");
+    motorControl.init();
     
     Serial.println("Initialising Controller...");
     controller.begin();

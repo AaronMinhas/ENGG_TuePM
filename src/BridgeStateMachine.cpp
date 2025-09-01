@@ -60,16 +60,13 @@ void BridgeStateMachine::begin() {
 }
 
 void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
-    Serial.print("STATE MACHINE: Received event in state ");
-    Serial.print(getStateString());
-    Serial.print(" - Event: ");
-    Serial.println((int)event);
-
+    // Only log important state transitions, not every event
+    
     // Global event handling. Takes precedence over state specific events
     // Does not implement Safety Manager but that is low priority atp.
     if (event == BridgeEvent::FAULT_DETECTED) {
         if (m_currentState != BridgeState::FAULT) {
-            Serial.println("STATE MACHINE: FAULT_DETECTED - entering FAULT state");
+            Serial.println("STATE: FAULT detected → entering FAULT state");
             changeState(BridgeState::FAULT);
             issueCommand(CommandTarget::CONTROLLER, CommandAction::ENTER_SAFE_STATE);
         }
@@ -101,15 +98,13 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                 issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
                 Serial.println("STATE MACHINE: Now waiting for BRIDGE_OPENED_SUCCESS...");
             } else if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
-                Serial.println("STATE MACHINE: MANUAL_BRIDGE_OPEN_REQUESTED in IDLE - issuing RAISE_BRIDGE command");
+                Serial.println("STATE: Bridge open requested → opening");
                 changeState(BridgeState::MANUAL_OPENING);
                 issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
-                Serial.println("STATE MACHINE: Now in MANUAL_OPENING, waiting for BRIDGE_OPENED_SUCCESS...");
             } else if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
-                Serial.println("STATE MACHINE: MANUAL_BRIDGE_CLOSE_REQUESTED in IDLE - issuing LOWER_BRIDGE command");
+                Serial.println("STATE: Bridge close requested → closing");
                 changeState(BridgeState::MANUAL_CLOSING);
                 issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
-                Serial.println("STATE MACHINE: Now in MANUAL_CLOSING, waiting for BRIDGE_CLOSED_SUCCESS...");
             } else if (event == BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED) {
                 Serial.println("STATE MACHINE: MANUAL_TRAFFIC_STOP_REQUESTED in IDLE - issuing STOP_TRAFFIC command");
                 issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
@@ -369,9 +364,6 @@ void BridgeStateMachine::onEventReceived(EventData* eventData) {
     // Extract the event type and forward to our existing handleEvent logic
     BridgeEvent event = eventData->getEventEnum();
     
-    Serial.print("STATE MACHINE: EventBus callback received event: ");
-    Serial.println((int)event);
-    
-    // Forward to our existing event handling logic
+    // Only log significant state changes, not every event
     handleEvent(event);
 }

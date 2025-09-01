@@ -189,12 +189,12 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
 
         // Send manual control event via EventBus to StateMachine (Command Mode)
         if (s == "Open") {
-            Serial.println("WebSocket: Publishing MANUAL_BRIDGE_OPEN_REQUESTED event");
+            Serial.println("WS: Bridge open requested");
             // Allocate on heap as EventBus processes asynchronously
             auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED);
             eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED, eventData);
         } else {
-            Serial.println("WebSocket: Publishing MANUAL_BRIDGE_CLOSE_REQUESTED event");
+            Serial.println("WS: Bridge close requested");
             auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED);
             eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED, eventData);
         }
