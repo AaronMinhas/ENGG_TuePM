@@ -1,5 +1,0 @@
-if(EXISTS "/media/ibromr/Yedek/SystemCoding/Macquarie/ENGG3000-2000(2025)/ENGG_TuePM/build/test_detection_system[1]_tests.cmake")
-  include("/media/ibromr/Yedek/SystemCoding/Macquarie/ENGG3000-2000(2025)/ENGG_TuePM/build/test_detection_system[1]_tests.cmake")
-else()
-  add_test(test_detection_system_NOT_BUILT test_detection_system_NOT_BUILT)
-endif()

@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/test_detection_system.dir/test/test_detection_system.cpp.o CMakeFiles/test_detection_system.dir/src/DetectionSystem.cpp.o CMakeFiles/test_detection_system.dir/src/EventBus.cpp.o -o test_detection_system  lib/libgtest_main.a lib/libgtest.a 
