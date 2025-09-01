@@ -62,6 +62,30 @@ void Controller::handleCommand(const Command& command) {
                     Serial.println("CONTROLLER: Calling SignalControl::resumeTraffic()");
                     m_signalControl.resumeTraffic();
                     break;
+                case CommandAction::SET_CAR_LIGHT_LEFT:
+                    Serial.print("CONTROLLER: Calling SignalControl::setCarLight(left, ");
+                    Serial.print(command.data);
+                    Serial.println(")");
+                    m_signalControl.setCarLight("left", command.data);
+                    break;
+                case CommandAction::SET_CAR_LIGHT_RIGHT:
+                    Serial.print("CONTROLLER: Calling SignalControl::setCarLight(right, ");
+                    Serial.print(command.data);
+                    Serial.println(")");
+                    m_signalControl.setCarLight("right", command.data);
+                    break;
+                case CommandAction::SET_BOAT_LIGHT_LEFT:
+                    Serial.print("CONTROLLER: Calling SignalControl::setBoatLight(left, ");
+                    Serial.print(command.data);
+                    Serial.println(")");
+                    m_signalControl.setBoatLight("left", command.data);
+                    break;
+                case CommandAction::SET_BOAT_LIGHT_RIGHT:
+                    Serial.print("CONTROLLER: Calling SignalControl::setBoatLight(right, ");
+                    Serial.print(command.data);
+                    Serial.println(")");
+                    m_signalControl.setBoatLight("right", command.data);
+                    break;
                 default:
                     Serial.println("CONTROLLER: Unknown action for SIGNAL_CONTROL");
                     break;

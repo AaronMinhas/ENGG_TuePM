@@ -10,6 +10,10 @@
  *  [x] EventBus integration for receiving success events from subsystems
  *  [x] CommandBus integration for issuing commands to subsystems
  *  [x] Basic fault detection and manual override handling
+ *  * COMMUNICATION PROTOCOLS
+ *  [x] WebSocket server integration not connected to state machine
+ *  [x] StateWriter doesn't even exist.
+ *  [x] No status broadcasting to monitoring systems
  * 
  * Missing :(
  * SAFETY MANAGER INTEGRATION
@@ -33,11 +37,6 @@
  *  [] No state persistence across system resets (do we even care?)
  *  [] No recovery mechanism if system crashes mid-operation
  *  [] No state validation on startup (we definitely care about this)
- * 
- * COMMUNICATION PROTOCOLS
- *  [] WebSocket server integration not connected to state machine
- *  [] StateWriter doesn't even exist.
- *  [] No status broadcasting to monitoring systems
  * 
  * SUBSYSTEM LOGIC (doesn't affect the statemachine logic but i'll list it here anyway)
  *  [] SignalControl subsystem not implemented (no TRAFFIC_STOPPED/RESUMED_SUCCESS events)
@@ -279,11 +278,28 @@ void BridgeStateMachine::issueCommand(CommandTarget target, CommandAction action
     Command cmd;
     cmd.target = target;
     cmd.action = action;
+    cmd.data = "";  // Empty data for commands that don't need it
     
     Serial.print("STATE MACHINE: Issuing command - Target: ");
     Serial.print((int)target);
     Serial.print(", Action: ");
     Serial.println((int)action);
+    
+    m_commandBus.publish(cmd);
+}
+
+void BridgeStateMachine::issueCommand(CommandTarget target, CommandAction action, const String& data) {
+    Command cmd;
+    cmd.target = target;
+    cmd.action = action;
+    cmd.data = data;
+    
+    Serial.print("STATE MACHINE: Issuing command - Target: ");
+    Serial.print((int)target);
+    Serial.print(", Action: ");
+    Serial.print((int)action);
+    Serial.print(", Data: ");
+    Serial.println(data);
     
     m_commandBus.publish(cmd);
 }

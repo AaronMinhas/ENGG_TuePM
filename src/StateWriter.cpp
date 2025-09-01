@@ -21,6 +21,8 @@ void StateWriter::beginSubscriptions() {
     bus_.subscribe(E::TRAFFIC_RESUMED_SUCCESS, sub);
     bus_.subscribe(E::INDICATOR_UPDATE_SUCCESS, sub);
     bus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
+    bus_.subscribe(E::CAR_LIGHT_CHANGED_SUCCESS, sub);
+    bus_.subscribe(E::BOAT_LIGHT_CHANGED_SUCCESS, sub);
     
     // Subscribe to actual state changes from the state machine
     bus_.subscribe(E::STATE_CHANGED, sub);
@@ -174,6 +176,30 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
         case BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED:
             manualMode_ = false;
             pushLog("Event: MANUAL_OVERRIDE_DEACTIVATED");
+            break;
+        case BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS:
+            // Handle individual car light changes
+            if (data && data->getEventEnum() == BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS) {
+                auto* lightData = static_cast<LightChangeData*>(data);
+                if (lightData->getSide() == "left") {
+                    carLeft_ = lightData->getColor();
+                } else if (lightData->getSide() == "right") {
+                    carRight_ = lightData->getColor();
+                }
+                pushLog("Success: CAR_LIGHT_CHANGED (" + lightData->getSide() + "=" + lightData->getColor() + ")");
+            }
+            break;
+        case BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS:
+            // Handle individual boat light changes
+            if (data && data->getEventEnum() == BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS) {
+                auto* lightData = static_cast<LightChangeData*>(data);
+                if (lightData->getSide() == "left") {
+                    boatLeft_ = lightData->getColor();
+                } else if (lightData->getSide() == "right") {
+                    boatRight_ = lightData->getColor();
+                }
+                pushLog("Success: BOAT_LIGHT_CHANGED (" + lightData->getSide() + "=" + lightData->getColor() + ")");
+            }
             break;
         default:
             pushLog(String("Event: ") + eventName(ev));

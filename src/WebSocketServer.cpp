@@ -84,6 +84,8 @@ void WebSocketServer::setupBroadcastSubscriptions() {
     eventBus_.subscribe(E::TRAFFIC_RESUMED_SUCCESS, sub);
     eventBus_.subscribe(E::INDICATOR_UPDATE_SUCCESS, sub);
     eventBus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
+    eventBus_.subscribe(E::CAR_LIGHT_CHANGED_SUCCESS, sub);
+    eventBus_.subscribe(E::BOAT_LIGHT_CHANGED_SUCCESS, sub);
 
     // Also include manual requests so frontend reflects transitional states immediately
     eventBus_.subscribe(E::MANUAL_BRIDGE_OPEN_REQUESTED, sub);
@@ -214,17 +216,25 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
         if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        // Send manual control event via EventBus to StateMachine (Command Mode)
-        if (v == "Red") {
-            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_STOP_REQUESTED event");
-            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED);
-            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED, eventData);
-        } else if (v == "Green") {
-            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_RESUME_REQUESTED event");
-            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED);
-            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED, eventData);
+        // Send specific car light command via CommandBus
+        CommandAction action;
+        if (sd == "left") {
+            action = CommandAction::SET_CAR_LIGHT_LEFT;
+        } else {
+            action = CommandAction::SET_CAR_LIGHT_RIGHT;
         }
-        // TODO: Yellow lights don't have a specific command action implemented yet
+        
+        Command cmd;
+        cmd.target = CommandTarget::SIGNAL_CONTROL;
+        cmd.action = action;
+        cmd.data = v;  // Pass the colour (Red/Yellow/Green)
+        
+        Serial.print("WebSocket: Publishing car light command - Side: ");
+        Serial.print(sd);
+        Serial.print(", Value: ");
+        Serial.println(v);
+        
+        commandBus_.publish(cmd);
 
         // Acknowledge request and include current snapshot
         sendOk(client, id, path, [this, sd, v](JsonObject p){
@@ -244,16 +254,25 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
         if (v != "Red" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        // Send manual control event via EventBus to StateMachine (Command Mode)
-        if (v == "Red") {
-            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_STOP_REQUESTED event");
-            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED);
-            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED, eventData);
-        } else if (v == "Green") {
-            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_RESUME_REQUESTED event");
-            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED);
-            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED, eventData);
+        // Send specific boat light command via CommandBus
+        CommandAction action;
+        if (sd == "left") {
+            action = CommandAction::SET_BOAT_LIGHT_LEFT;
+        } else {
+            action = CommandAction::SET_BOAT_LIGHT_RIGHT;
         }
+        
+        Command cmd;
+        cmd.target = CommandTarget::SIGNAL_CONTROL;
+        cmd.action = action;
+        cmd.data = v;  // Pass the colour (Red/Green)
+        
+        Serial.print("WebSocket: Publishing boat light command - Side: ");
+        Serial.print(sd);
+        Serial.print(", Value: ");
+        Serial.println(v);
+        
+        commandBus_.publish(cmd);
 
         // Acknowledge request and include current snapshot
         sendOk(client, id, path, [this, sd, v](JsonObject p){

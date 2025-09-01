@@ -81,6 +81,33 @@ public:
 };
 
 /**
+ * Event data for traffic light changes
+ * Carries information about which light was changed and to what colour it was changed to
+ */
+class LightChangeData : public EventData {
+private:
+    String side_;      // "left" or "right"
+    String color_;     // "Red", "Green", "Yellow"
+    bool isCarLight_;  // true for car light, false for boat light
+    
+public:
+    LightChangeData(const String& side, const String& color, bool isCarLight) 
+        : side_(side), color_(color), isCarLight_(isCarLight) {}
+    
+    const char* getEventType() const override { 
+        return isCarLight_ ? "CAR_LIGHT_CHANGED" : "BOAT_LIGHT_CHANGED"; 
+    }
+    
+    BridgeEvent getEventEnum() const override { 
+        return isCarLight_ ? BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS : BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS; 
+    }
+    
+    const String& getSide() const { return side_; }
+    const String& getColor() const { return color_; }
+    bool isCarLight() const { return isCarLight_; }
+};
+
+/**
  * Represents a subscription to an event type
  * Contains both the callback function and its priority
  */

@@ -1,4 +1,5 @@
 #pragma once
+#include <Arduino.h>
 
 // System States
 enum class BridgeState {
@@ -41,6 +42,8 @@ enum class BridgeEvent {
     TRAFFIC_RESUMED_SUCCESS,
     SYSTEM_SAFE_SUCCESS,
     INDICATOR_UPDATE_SUCCESS,
+    CAR_LIGHT_CHANGED_SUCCESS,
+    BOAT_LIGHT_CHANGED_SUCCESS,
     
     // State Change Events
     STATE_CHANGED
@@ -65,6 +68,10 @@ enum class CommandAction {
     // SignalControl Actions
     STOP_TRAFFIC,
     RESUME_TRAFFIC,
+    SET_CAR_LIGHT_LEFT,
+    SET_CAR_LIGHT_RIGHT,
+    SET_BOAT_LIGHT_LEFT,
+    SET_BOAT_LIGHT_RIGHT,
 
     // LocalStateIndicator Actions
     SET_STATE
@@ -74,4 +81,5 @@ enum class CommandAction {
 struct Command {
     CommandTarget target;
     CommandAction action;
+    String data;
 };

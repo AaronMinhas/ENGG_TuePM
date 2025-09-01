@@ -16,6 +16,7 @@ public:
 private:
     void changeState(BridgeState newState);
     void issueCommand(CommandTarget target, CommandAction action);
+    void issueCommand(CommandTarget target, CommandAction action, const String& data);
     void subscribeToEvents();
     
     void onEventReceived(EventData* eventData);

@@ -38,3 +38,37 @@ void SignalControl::halt() {
     
     Serial.println("SIGNAL_CONTROL: All signals set to safe state");
 }
+
+void SignalControl::setCarLight(const String& side, const String& color) {
+    Serial.print("SIGNAL_CONTROL: Setting car light - Side: ");
+    Serial.print(side);
+    Serial.print(", Colour: ");
+    Serial.println(color);
+    
+    // TODO: Implement actual hardware control
+    // Control the specific car traffic light
+    
+    // For now, just log the change
+    Serial.println("SIGNAL_CONTROL: Car light updated successfully");
+    
+    // Publish success event with light change data
+    auto* lightData = new LightChangeData(side, color, true);  // true = car light
+    m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, lightData);
+}
+
+void SignalControl::setBoatLight(const String& side, const String& color) {
+    Serial.print("SIGNAL_CONTROL: Setting boat light - Side: ");
+    Serial.print(side);
+    Serial.print(", Colour: ");
+    Serial.println(color);
+    
+    // TODO: Implement actual hardware control
+    // Control the specific boat traffic light
+    
+    // For now, just log the change
+    Serial.println("SIGNAL_CONTROL: Boat light updated successfully");
+    
+    // Publish success event with light change data
+    auto* lightData = new LightChangeData(side, color, false);  // false = boat light
+    m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, lightData);
+}
