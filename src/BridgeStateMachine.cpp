@@ -101,6 +101,24 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                 // Now issue the next command: raise bridge
                 issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
                 Serial.println("STATE MACHINE: Now waiting for BRIDGE_OPENED_SUCCESS...");
+            } else if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_BRIDGE_OPEN_REQUESTED in IDLE - issuing RAISE_BRIDGE command");
+                changeState(BridgeState::MANUAL_OPENING);
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
+                Serial.println("STATE MACHINE: Now in MANUAL_OPENING, waiting for BRIDGE_OPENED_SUCCESS...");
+            } else if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_BRIDGE_CLOSE_REQUESTED in IDLE - issuing LOWER_BRIDGE command");
+                changeState(BridgeState::MANUAL_CLOSING);
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+                Serial.println("STATE MACHINE: Now in MANUAL_CLOSING, waiting for BRIDGE_CLOSED_SUCCESS...");
+            } else if (event == BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_TRAFFIC_STOP_REQUESTED in IDLE - issuing STOP_TRAFFIC command");
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
+                Serial.println("STATE MACHINE: Traffic stop requested manually, staying in IDLE...");
+            } else if (event == BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_TRAFFIC_RESUME_REQUESTED in IDLE - issuing RESUME_TRAFFIC command");
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::RESUME_TRAFFIC);
+                Serial.println("STATE MACHINE: Traffic resume requested manually, staying in IDLE...");
             }
             break;
 
@@ -179,6 +197,62 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
             // In manual mode, the state machine doesn't process normal operational events
             break;
 
+        case BridgeState::MANUAL_OPENING:
+            // MANUAL_OPENING state waits for bridge to finish opening
+            if (event == BridgeEvent::BRIDGE_OPENED_SUCCESS) {
+                Serial.println("STATE MACHINE: BRIDGE_OPENED_SUCCESS received - transitioning to MANUAL_OPEN");
+                changeState(BridgeState::MANUAL_OPEN);
+                Serial.println("STATE MACHINE: Bridge manually opened - waiting for manual close command");
+            } else if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_BRIDGE_CLOSE_REQUESTED while opening - will close after opening completes");
+            } else {
+                Serial.println("STATE MACHINE: MANUAL_OPENING state ignoring non-success event - still waiting for BRIDGE_OPENED_SUCCESS");
+            }
+            break;
+
+        case BridgeState::MANUAL_OPEN:
+            // MANUAL_OPEN state waits for manual close command
+            if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_BRIDGE_CLOSE_REQUESTED received - issuing LOWER_BRIDGE command");
+                changeState(BridgeState::MANUAL_CLOSING);
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+                Serial.println("STATE MACHINE: Now in MANUAL_CLOSING, waiting for BRIDGE_CLOSED_SUCCESS...");
+            } else if (event == BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_TRAFFIC_STOP_REQUESTED while bridge open - issuing STOP_TRAFFIC command");
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
+            } else if (event == BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_TRAFFIC_RESUME_REQUESTED while bridge open - issuing RESUME_TRAFFIC command");
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::RESUME_TRAFFIC);
+            } else {
+                Serial.println("STATE MACHINE: MANUAL_OPEN state waiting for manual close command");
+            }
+            break;
+
+        case BridgeState::MANUAL_CLOSING:
+            // MANUAL_CLOSING state waits for bridge to finish closing
+            if (event == BridgeEvent::BRIDGE_CLOSED_SUCCESS) {
+                Serial.println("STATE MACHINE: BRIDGE_CLOSED_SUCCESS received - returning to IDLE");
+                changeState(BridgeState::IDLE);
+                Serial.println("STATE MACHINE: Bridge manually closed - back to IDLE state");
+            } else if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_BRIDGE_OPEN_REQUESTED while closing - will open after closing completes");
+            } else {
+                Serial.println("STATE MACHINE: MANUAL_CLOSING state ignoring non-success event - still waiting for BRIDGE_CLOSED_SUCCESS");
+            }
+            break;
+
+        case BridgeState::MANUAL_CLOSED:
+            // MANUAL_CLOSED state waits for manual open command (unused at the momement)
+            if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
+                Serial.println("STATE MACHINE: MANUAL_BRIDGE_OPEN_REQUESTED received - issuing RAISE_BRIDGE command");
+                changeState(BridgeState::MANUAL_OPENING);
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
+                Serial.println("STATE MACHINE: Now in MANUAL_OPENING, waiting for BRIDGE_OPENED_SUCCESS...");
+            } else {
+                Serial.println("STATE MACHINE: MANUAL_CLOSED state waiting for manual open command");
+            }
+            break;
+
         default:
             Serial.print("STATE MACHINE: Unknown state: ");
             Serial.println((int)m_currentState);
@@ -195,6 +269,10 @@ void BridgeStateMachine::changeState(BridgeState newState) {
     Serial.print((int)m_previousState);
     Serial.print(" to ");
     Serial.println((int)m_currentState);
+    
+    // Publish state change event for monitoring systems
+    auto* stateChangeData = new StateChangeData(m_currentState, m_previousState);
+    m_eventBus.publish(BridgeEvent::STATE_CHANGED, stateChangeData);
 }
 
 void BridgeStateMachine::issueCommand(CommandTarget target, CommandAction action) {
@@ -224,6 +302,10 @@ String BridgeStateMachine::getStateString() const {
         case BridgeState::RESUMING_TRAFFIC: return "RESUMING_TRAFFIC";
         case BridgeState::FAULT: return "FAULT";
         case BridgeState::MANUAL_MODE: return "MANUAL_MODE";
+        case BridgeState::MANUAL_OPENING: return "MANUAL_OPENING";
+        case BridgeState::MANUAL_OPEN: return "MANUAL_OPEN";
+        case BridgeState::MANUAL_CLOSING: return "MANUAL_CLOSING";
+        case BridgeState::MANUAL_CLOSED: return "MANUAL_CLOSED";
         default: return "UNKNOWN";
     }
 }
@@ -238,6 +320,12 @@ void BridgeStateMachine::subscribeToEvents() {
     // Subscribe to external events
     m_eventBus.subscribe(BridgeEvent::BOAT_DETECTED, eventCallback, EventPriority::NORMAL);
     m_eventBus.subscribe(BridgeEvent::BOAT_PASSED, eventCallback, EventPriority::NORMAL);
+    
+    // Subscribe to manual control events (Command Mode)
+    m_eventBus.subscribe(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED, eventCallback, EventPriority::NORMAL);
     
     // Subscribe to success events from subsystems
     m_eventBus.subscribe(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, eventCallback, EventPriority::NORMAL);

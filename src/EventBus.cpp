@@ -25,6 +25,22 @@ BridgeEvent EventData::getEventEnum() const {
     return BridgeEvent::FAULT_DETECTED; // Placeholder return value
 }
 
+// SimpleEventData
+const char* SimpleEventData::getEventType() const {
+    // Return the event type name based on the stored enum
+    switch (eventType_) {
+        case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED: return "MANUAL_BRIDGE_OPEN_REQUESTED";
+        case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED: return "MANUAL_BRIDGE_CLOSE_REQUESTED";
+        case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED: return "MANUAL_TRAFFIC_STOP_REQUESTED";
+        case BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED: return "MANUAL_TRAFFIC_RESUME_REQUESTED";
+        case BridgeEvent::BOAT_DETECTED: return "BOAT_DETECTED";
+        case BridgeEvent::BOAT_PASSED: return "BOAT_PASSED";
+        case BridgeEvent::FAULT_DETECTED: return "FAULT_DETECTED";
+        case BridgeEvent::FAULT_CLEARED: return "FAULT_CLEARED";
+        default: return "UNKNOWN_EVENT";
+    }
+}
+
 // EventBus implementation
 EventBus::EventBus() {
     // Initialize event bus
@@ -34,12 +50,12 @@ EventBus::EventBus() {
 
 EventBus::~EventBus() {
     // Acquarie locks to safely clean up shared resources
-    std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
-    std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
+    std::lock_guard<std::recursive_mutex> queueLock(eventQueue_mutex);
+    std::lock_guard<std::recursive_mutex> subscribersLock(subscribers_mutex);
 
     // Delete all pending events in the queue
     for (auto& queuedEvent : eventQueue) {
-        // If eventData was dynamically allocated, delete it 
+        // Clean up any heap-allocated EventData
         delete queuedEvent.eventData;
         queuedEvent.eventData = nullptr;
     }
@@ -51,7 +67,7 @@ EventBus::~EventBus() {
 
 void EventBus::subscribe(BridgeEvent eventType, std::function<void(EventData*)> callback, EventPriority priority) {
     // Lock the subscribers map for thread safety
-    std::lock_guard<std::mutex> lock(subscribers_mutex);
+    std::lock_guard<std::recursive_mutex> lock(subscribers_mutex);
 
     //Create a new subscribtion object
     EventSubscription subscribtion;
@@ -63,8 +79,8 @@ void EventBus::subscribe(BridgeEvent eventType, std::function<void(EventData*)> 
 }
 
 void EventBus::publish(BridgeEvent eventType, EventData* eventData, EventPriority priority) {
-    // Lock the event queue for thread safety
-    std::lock_guard<std::mutex> lock(eventQueue_mutex);
+    // Lock the event queue for thread safety (recursive mutex allows nested calls)
+    std::lock_guard<std::recursive_mutex> lock(eventQueue_mutex);
 
     // Create a new QueuedEvent with the provided data
     QueuedEvent newEvent;
@@ -89,7 +105,7 @@ void EventBus::publish(BridgeEvent eventType, EventData* eventData, EventPriorit
 
 void EventBus::unsubscribe(BridgeEvent eventType, std::function<void(EventData*)> callback) {
      // Lock the subscribers map for thread safety
-    std::lock_guard<std::mutex> lock(subscribers_mutex);
+    std::lock_guard<std::recursive_mutex> lock(subscribers_mutex);
 
     // Since std::function comparison is not supported on ESP32,
     // We now remove all subscribers for this event type
@@ -103,8 +119,8 @@ void EventBus::unsubscribe(BridgeEvent eventType, std::function<void(EventData*)
 
 void EventBus::processEvents() {
     // Lock both event queue and subscribers for thread safety
-    std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
-    std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
+    std::lock_guard<std::recursive_mutex> queueLock(eventQueue_mutex);
+    std::lock_guard<std::recursive_mutex> subscribersLock(subscribers_mutex);
 
     // Process events in the queue
     while (!eventQueue.empty()) {
@@ -113,24 +129,38 @@ void EventBus::processEvents() {
         eventQueue.erase(eventQueue.begin());
 
         // 2. For each event, find subscribers and call their callbacks
+        Serial.printf("DEBUG: Processing event type %d\n", (int)event.eventType);
+        
         auto subIt = subscribers.find(event.eventType);
         if (subIt != subscribers.end()) {
+            Serial.printf("DEBUG: Found %d subscribers for event type %d\n", subIt->second.size(), (int)event.eventType);
+            
             for (const auto& subscription : subIt->second) {
+                Serial.println("DEBUG: About to call subscriber callback");
+                
                 // Callback
                 if (subscription.callback) {
+                    Serial.println("DEBUG: Callback is valid, calling now");
                     subscription.callback(event.eventData);
+                    Serial.println("DEBUG: Callback completed successfully");
+                } else {
+                    Serial.println("DEBUG: Callback is null, skipping");
                 }
             }
+        } else {
+            Serial.printf("DEBUG: No subscribers found for event type %d\n", (int)event.eventType);
         }
-        // Delete event data if dynamically allocated
+        
+        // Clean up event data if provided
         delete event.eventData;
+        event.eventData = nullptr;
     }
 }
 
 void EventBus::clear() {
     // Lock both event queue and subscribers for thread safety
-    std::lock_guard<std::mutex> queueLock(eventQueue_mutex);
-    std::lock_guard<std::mutex> subscribersLock(subscribers_mutex);
+    std::lock_guard<std::recursive_mutex> queueLock(eventQueue_mutex);
+    std::lock_guard<std::recursive_mutex> subscribersLock(subscribers_mutex);
 
     // Delete all pending events in the queue
     for (auto& event : eventQueue) {
@@ -144,7 +174,7 @@ void EventBus::clear() {
 }
 
 bool EventBus::hasSubscriptions(BridgeEvent eventType) const {
-    std::lock_guard<std::mutex> lock(subscribers_mutex);
+    std::lock_guard<std::recursive_mutex> lock(subscribers_mutex);
 
     auto it = subscribers.find(eventType);
     return (it != subscribers.end() && !it->second.empty());

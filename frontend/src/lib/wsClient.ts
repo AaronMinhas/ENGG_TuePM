@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { ResponseMsg, RequestMsgT } from "./schema";
+import { AnyInbound, ResponseMsg, RequestMsgT, EventMsgT } from "./schema";
 
 type Pending = {
   resolve: (val: unknown) => void;
@@ -15,6 +15,7 @@ export class ESPWebSocketClient {
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPong = Date.now();
   private statusListener?: (s: "Open" | "Closed" | "Connecting") => void;
+  private eventListener?: (e: EventMsgT) => void;
 
   constructor(url: string) {
     this.url = url;
@@ -22,6 +23,10 @@ export class ESPWebSocketClient {
 
   onStatus(listener: (s: "Open" | "Closed" | "Connecting") => void) {
     this.statusListener = listener;
+  }
+
+  onEvent(listener: (e: EventMsgT) => void) {
+    this.eventListener = listener;
   }
 
   connect() {
@@ -39,14 +44,23 @@ export class ESPWebSocketClient {
 
     this.ws.onmessage = (ev) => {
       try {
-        const msg = ResponseMsg.parse(JSON.parse(ev.data));
-        const p = this.pending.get(msg.id);
-        if (p) {
-          clearTimeout(p.timer);
-          this.pending.delete(msg.id);
-          msg.ok ? p.resolve(msg.payload) : p.reject(new Error(msg.error || "ESP error"));
+        const anyMsg = AnyInbound.parse(JSON.parse(ev.data));
+        if ((anyMsg as any).type === "response") {
+          const msg = ResponseMsg.parse(anyMsg);
+          const p = this.pending.get(msg.id);
+          if (p) {
+            clearTimeout(p.timer);
+            this.pending.delete(msg.id);
+            msg.ok ? p.resolve(msg.payload) : p.reject(new Error(msg.error || "ESP error"));
+          }
+          return;
         }
-      } catch {}
+        // Event message
+        const evt = anyMsg as EventMsgT;
+        this.eventListener?.(evt);
+      } catch {
+        // Ignore
+      }
     };
 
     this.ws.onclose = () => {

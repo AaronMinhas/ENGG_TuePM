@@ -9,7 +9,13 @@ enum class BridgeState {
     CLOSING,
     RESUMING_TRAFFIC,
     FAULT,
-    MANUAL_MODE
+    MANUAL_MODE,
+    
+    // Manual Control States (Command Mode)
+    MANUAL_OPENING,
+    MANUAL_OPEN,
+    MANUAL_CLOSING,
+    MANUAL_CLOSED
 };
 
 // System Events
@@ -22,13 +28,22 @@ enum class BridgeEvent {
     MANUAL_OVERRIDE_ACTIVATED,
     MANUAL_OVERRIDE_DEACTIVATED,
 
+    // Manual Control Events (Command Mode)
+    MANUAL_BRIDGE_OPEN_REQUESTED,
+    MANUAL_BRIDGE_CLOSE_REQUESTED,
+    MANUAL_TRAFFIC_STOP_REQUESTED,
+    MANUAL_TRAFFIC_RESUME_REQUESTED,
+
     // Success Events
     TRAFFIC_STOPPED_SUCCESS,
     BRIDGE_OPENED_SUCCESS,
     BRIDGE_CLOSED_SUCCESS,
     TRAFFIC_RESUMED_SUCCESS,
     SYSTEM_SAFE_SUCCESS,
-    INDICATOR_UPDATE_SUCCESS
+    INDICATOR_UPDATE_SUCCESS,
+    
+    // State Change Events
+    STATE_CHANGED
 };
 
 // System Command Targets

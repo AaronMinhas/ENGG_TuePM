@@ -4,10 +4,12 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "StateWriter.h"
+#include "CommandBus.h"
+#include "EventBus.h"
 
 class WebSocketServer {
 public:
-    WebSocketServer(uint16_t port, StateWriter& StateWriter);
+    WebSocketServer(uint16_t port, StateWriter& StateWriter, CommandBus& commandBus, EventBus& eventBus);
 
     void beginWiFi(const char* ssid, const char* password);
     void startServer();
@@ -16,6 +18,8 @@ public:
 
 private:
     StateWriter& state_;
+    CommandBus& commandBus_;
+    EventBus& eventBus_;
 
     AsyncWebServer server;
     AsyncWebSocket ws;
@@ -47,4 +51,7 @@ private:
     void fillCarTrafficStatus(JsonObject obj);
     void fillBoatTrafficStatus(JsonObject obj);
     void fillSystemStatus(JsonObject obj);
+
+    void broadcastSnapshot();
+    void setupBroadcastSubscriptions();
 };

@@ -21,9 +21,18 @@ void CommandBus::publish(const Command& command) {
     // Lock the subscribers map for thread safety
     std::lock_guard<std::mutex> lock(bus_mutex);
 
+    Serial.print("CommandBus: Publishing command - Target: ");
+    Serial.print((int)command.target);
+    Serial.print(", Action: ");
+    Serial.println((int)command.action);
+
     // Find subscribers for the command's target
     auto it = subscribers.find(command.target);
     if (it != subscribers.end()) {
+        Serial.print("CommandBus: Found ");
+        Serial.print(it->second.size());
+        Serial.println(" subscribers");
+        
         // Make a local copy of callbacks to minimize lock duration
         auto callbacks = it->second;
         // Call each subscriber's callback with the command
@@ -32,6 +41,8 @@ void CommandBus::publish(const Command& command) {
                 callback(command);
             }
         }
+    } else {
+        Serial.println("CommandBus: No subscribers found for this target");
     }
 }
 

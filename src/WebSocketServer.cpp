@@ -1,7 +1,7 @@
 #include "WebSocketServer.h"
 
-WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter) 
-    : server(port), ws("/ws"), port(port), lastStatusCheck(0), state_(stateWriter) {}
+WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter, CommandBus& commandBus, EventBus& eventBus) 
+    : server(port), ws("/ws"), port(port), lastStatusCheck(0), state_(stateWriter), commandBus_(commandBus), eventBus_(eventBus) {}
 
 void WebSocketServer::beginWiFi(const char* ssid, const char* password) {
     Serial.print("Connecting to WiFi network: ");
@@ -36,6 +36,9 @@ void WebSocketServer::startServer() {
     Serial.print("Connect to: ws://");
     Serial.print(WiFi.localIP());
     Serial.println("/ws");
+
+    // Subscribe to state-related events and broadcast snapshot on change
+    setupBroadcastSubscriptions();
 }
 
 void WebSocketServer::fillBridgeStatus(JsonObject obj) {
@@ -52,6 +55,44 @@ void WebSocketServer::fillBoatTrafficStatus(JsonObject obj) {
 
 void WebSocketServer::fillSystemStatus(JsonObject obj) {
     state_.fillSystemStatus(obj);
+}
+
+void WebSocketServer::broadcastSnapshot() {
+    StaticJsonDocument<1024> doc;
+    state_.buildSnapshot(doc);
+    String out; serializeJson(doc, out);
+    ws.textAll(out);
+}
+
+void WebSocketServer::setupBroadcastSubscriptions() {
+    using E = BridgeEvent;
+    auto sub = [this](EventData*){
+        broadcastSnapshot();
+    };
+
+    // Subscribe to the same set StateWriter uses
+    eventBus_.subscribe(E::BOAT_DETECTED, sub);
+    eventBus_.subscribe(E::BOAT_PASSED, sub);
+    eventBus_.subscribe(E::FAULT_DETECTED, sub);
+    eventBus_.subscribe(E::FAULT_CLEARED, sub);
+    eventBus_.subscribe(E::MANUAL_OVERRIDE_ACTIVATED, sub);
+    eventBus_.subscribe(E::MANUAL_OVERRIDE_DEACTIVATED, sub);
+
+    eventBus_.subscribe(E::TRAFFIC_STOPPED_SUCCESS, sub);
+    eventBus_.subscribe(E::BRIDGE_OPENED_SUCCESS, sub);
+    eventBus_.subscribe(E::BRIDGE_CLOSED_SUCCESS, sub);
+    eventBus_.subscribe(E::TRAFFIC_RESUMED_SUCCESS, sub);
+    eventBus_.subscribe(E::INDICATOR_UPDATE_SUCCESS, sub);
+    eventBus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
+
+    // Also include manual requests so frontend reflects transitional states immediately
+    eventBus_.subscribe(E::MANUAL_BRIDGE_OPEN_REQUESTED, sub);
+    eventBus_.subscribe(E::MANUAL_BRIDGE_CLOSE_REQUESTED, sub);
+    eventBus_.subscribe(E::MANUAL_TRAFFIC_STOP_REQUESTED, sub);
+    eventBus_.subscribe(E::MANUAL_TRAFFIC_RESUME_REQUESTED, sub);
+    
+    // Subscribe to state changes for immediate updates
+    eventBus_.subscribe(E::STATE_CHANGED, sub);
 }
 
 /**
@@ -74,8 +115,10 @@ void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, con
     String out; serializeJson(doc, out);
     client->text(out);
 
-    Serial.printf("[WS][TX][OK] Client %u <- %s\n", client->id(), path.c_str());
-    Serial.println(out);
+    // Only log important SET commands, not routine status requests
+    if (path.startsWith("/bridge/state")) {
+        Serial.printf("[WS][TX][OK] Client %u <- %s\n", client->id(), path.c_str());
+    }
 }
 
 void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, const String& path, const String& msg) {
@@ -135,44 +178,90 @@ void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, 
  */
 void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, const String& path, JsonVariant payload) {
     if (path == "/bridge/state") {
-        // auto payloadObj = payload.as<JsonObject>();
-        // const char* state = payloadObj["state"];
-        // if (!state) { sendError(client, id, path, "Missing 'state'"); return; }
-        // String s = String(state);
-        // if (s != "Open" && s != "Closed") { sendError(client, id, path, "Invalid state"); return; }
+        auto payloadObj = payload.as<JsonObject>();
+        const char* state = payloadObj["state"];
+        if (!state) { sendError(client, id, path, "Missing 'state'"); return; }
+        
+        String s = String(state);
+        if (s != "Open" && s != "Closed") { sendError(client, id, path, "Invalid state"); return; }
 
-        // bridgeState = s;
-        // lockEngaged = (s == "Closed");
-        // bridgeLastChangeMs = millis();
+        // Send manual control event via EventBus to StateMachine (Command Mode)
+        if (s == "Open") {
+            Serial.println("WebSocket: Publishing MANUAL_BRIDGE_OPEN_REQUESTED event");
+            // Allocate on heap as EventBus processes asynchronously
+            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED);
+            eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED, eventData);
+        } else {
+            Serial.println("WebSocket: Publishing MANUAL_BRIDGE_CLOSE_REQUESTED event");
+            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED);
+            eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED, eventData);
+        }
 
-        sendOk(client, id, path, [this](JsonObject p){ fillBridgeStatus(p); });
+        // Acknowledge request and provide current vs requested state distinctly
+        sendOk(client, id, path, [this, s](JsonObject p){
+            p["requestedState"] = s;
+            JsonObject current = p.createNestedObject("current");
+            fillBridgeStatus(current);
+        });
 
     } else if (path == "/traffic/car/light") {
-        // auto payloadObj = payload.as<JsonObject>();
-        // const char* side = payloadObj["side"];
-        // const char* value = payloadObj["value"];
-        // if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+        auto payloadObj = payload.as<JsonObject>();
+        const char* side = payloadObj["side"];
+        const char* value = payloadObj["value"];
+        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
 
-        // String sd = String(side), v = String(value);
-        // if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
-        // if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
+        String sd = String(side), v = String(value);
+        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        // if (sd == "left") carTrafficLeft = v; else carTrafficRight = v;
+        // Send manual control event via EventBus to StateMachine (Command Mode)
+        if (v == "Red") {
+            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_STOP_REQUESTED event");
+            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED);
+            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED, eventData);
+        } else if (v == "Green") {
+            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_RESUME_REQUESTED event");
+            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED);
+            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED, eventData);
+        }
+        // TODO: Yellow lights don't have a specific command action implemented yet
 
-        sendOk(client, id, path, [this](JsonObject p){ fillCarTrafficStatus(p); });
+        // Acknowledge request and include current snapshot
+        sendOk(client, id, path, [this, sd, v](JsonObject p){
+            p["requestedSide"] = sd;
+            p["requestedValue"] = v;
+            JsonObject current = p.createNestedObject("current");
+            fillCarTrafficStatus(current);
+        });
 
     } else if (path == "/traffic/boat/light") { 
-        // auto payloadObj = payload.as<JsonObject>();
-        // const char* side = payloadObj["side"];
-        // const char* value = payloadObj["value"];
-        // if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+        auto payloadObj = payload.as<JsonObject>();
+        const char* side = payloadObj["side"];
+        const char* value = payloadObj["value"];
+        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
 
-        // String sd = String(side), v = String(value);
-        // if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
-        // if (v != "Red" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
+        String sd = String(side), v = String(value);
+        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        if (v != "Red" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        // if (sd == "left") boatTrafficLeft = v; else boatTrafficRight = v;
-        sendOk(client, id, path, [this](JsonObject p){ fillBoatTrafficStatus(p); });
+        // Send manual control event via EventBus to StateMachine (Command Mode)
+        if (v == "Red") {
+            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_STOP_REQUESTED event");
+            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED);
+            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED, eventData);
+        } else if (v == "Green") {
+            Serial.println("WebSocket: Publishing MANUAL_TRAFFIC_RESUME_REQUESTED event");
+            auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED);
+            eventBus_.publish(BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED, eventData);
+        }
+
+        // Acknowledge request and include current snapshot
+        sendOk(client, id, path, [this, sd, v](JsonObject p){
+            p["requestedSide"] = sd;
+            p["requestedValue"] = v;
+            JsonObject current = p.createNestedObject("current");
+            fillBoatTrafficStatus(current);
+        });
     } else {
         sendError(client, id, path, "Unknown SET path");
     }
@@ -223,7 +312,11 @@ void WebSocketServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient
     }
 
     if (method == "GET") {
-        Serial.printf("[WS][RX] Client %u -> GET %s\n", client->id(), path.c_str());
+        // Only log non routine GET requests
+        if (path != "/bridge/status" && path != "/traffic/car/status" && 
+            path != "/traffic/boat/status" && path != "/system/status" && path != "/system/ping") {
+            Serial.printf("[WS][RX] Client %u -> GET %s\n", client->id(), path.c_str());
+        }
         handleGet(client, id, path);
     }
     else if (method == "SET") {
@@ -265,9 +358,6 @@ void WebSocketServer::checkWiFiStatus() {
             }
             Serial.println("Attempting to reconnect ->");
             WiFi.reconnect();
-        } else {
-            Serial.println("WiFi Status: Connected");
-            Serial.print(WiFi.localIP());
-        }
+        } 
     }
 }

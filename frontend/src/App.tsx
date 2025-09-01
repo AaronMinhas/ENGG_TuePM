@@ -29,7 +29,7 @@
  * - Need to add an indication of WIFI strength --> Using RSSI range -- closer to 0 the stronger
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getESPClient,
   getBridgeStatus,
@@ -40,6 +40,7 @@ import {
   setCarTraffic,
   setBoatTraffic,
 } from "./lib/api";
+import type { EventMsgT } from "./lib/schema";
 import type {
   BridgeStatus,
   CarTrafficStatus,
@@ -79,6 +80,8 @@ function App() {
   const [system, setSystem] = useState<SystemStatus | null>(null);
 
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
+  const lastBridgeStateRef = useRef<string | null>(null);
+  const seenLogRef = useRef<Set<string>>(new Set());
 
   const logActivity = (type: "sent" | "received", message: string) => {
     setActivityLog((prev) => [{ type, message, timestamp: Date.now() }, ...prev.slice(0, 49)]);
@@ -157,11 +160,12 @@ function App() {
     setLastSentAt(Date.now());
     logActivity("sent", "Open bridge");
 
-    const data = await setBridgeState("Open");
+    const data: any = await setBridgeState("Open");
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
-    setBridge({ ...data, receivedAt: Date.now() });
-    logActivity("received", `Bridge state: ${data.state}`);
+    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridge?.state ?? "";
+    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridge?.lastChangeMs ?? 0;
+    setBridge({ state, lastChangeMs, lockEngaged: (data.lockEngaged ?? data.current?.lockEngaged) ?? false, receivedAt: Date.now() });
   };
 
   const handleCloseBridge = async () => {
@@ -169,11 +173,12 @@ function App() {
     setLastSentAt(Date.now());
     logActivity("sent", "Close bridge");
 
-    const data = await setBridgeState("Closed");
+    const data: any = await setBridgeState("Closed");
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
-    setBridge({ ...data, receivedAt: Date.now() });
-    logActivity("received", `Bridge state: ${data.state}`);
+    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridge?.state ?? "";
+    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridge?.lastChangeMs ?? 0;
+    setBridge({ state, lastChangeMs, lockEngaged: (data.lockEngaged ?? data.current?.lockEngaged) ?? false, receivedAt: Date.now() });
   };
 
   const handleCarTraffic = async (side: "left" | "right", value: CarTrafficLight) => {
@@ -213,9 +218,59 @@ function App() {
   };
 
   useEffect(() => {
-    const client = getESPClient("ws://192.168.0.173/ws");
+    // const client = getESPClient("ws://192.168.0.173/ws"); // <- Josh testing.
+    const client = getESPClient("ws://192.168.1.247/ws"); // <- Aaron testing.
     // const client = getESPClient("ws://172.20.10.7/ws");
     client.onStatus(setWsStatus);
+
+    // Real-time Activity from snapshot events
+    client.onEvent((evt: EventMsgT) => {
+      if (evt.type !== "event" || evt.path !== "/system/snapshot") return;
+      const payload: any = evt.payload || {};
+      const bridge = payload.bridge || {};
+      const traffic = payload.traffic || {};
+      const sys = payload.system || {};
+      const logArr: string[] = Array.isArray(payload.log) ? payload.log : [];
+
+      // Update tiles opportunistically
+      if (bridge.state) setBridge({ state: bridge.state, lastChangeMs: bridge.lastChangeMs || 0, lockEngaged: !!bridge.lockEngaged, receivedAt: Date.now() });
+      if (traffic.car) {
+        setCarTrafficState({
+          left: { value: traffic.car.left?.value ?? (carTraffic?.left.value || "Green"), receivedAt: Date.now() },
+          right: { value: traffic.car.right?.value ?? (carTraffic?.right.value || "Green"), receivedAt: Date.now() },
+        });
+      }
+      if (traffic.boat) {
+        setBoatTrafficState({
+          left: { value: traffic.boat.left?.value ?? (boatTraffic?.left.value || "Red"), receivedAt: Date.now() },
+          right: { value: traffic.boat.right?.value ?? (boatTraffic?.right.value || "Red"), receivedAt: Date.now() },
+        });
+      }
+      if (sys.connection) setSystem({ connection: sys.connection, rssi: sys.rssi, uptimeMs: sys.uptimeMs, receivedAt: Date.now() });
+
+      // Activity: log bridge state changes
+      if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
+        logActivity("received", `Bridge state: ${bridge.state}`);
+        lastBridgeStateRef.current = bridge.state;
+        setPacketsReceived((prev) => prev + 1);
+        setLastReceivedAt(Date.now());
+      }
+
+      // Append new log lines
+      if (logArr.length) {
+        const seen = seenLogRef.current;
+        for (const line of logArr) {
+          if (!seen.has(line)) {
+            logActivity("received", line);
+            seen.add(line);
+          }
+        }
+        // cap seen size
+        if (seen.size > 256) {
+          seenLogRef.current = new Set(Array.from(seen).slice(-128));
+        }
+      }
+    });
 
     const poll = async () => {
       try {

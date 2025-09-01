@@ -21,9 +21,17 @@ export const ResponseMsg = WsMsgBase.extend({
   error: z.string().optional(),
 });
 
-export const AnyInbound = ResponseMsg;
+export const EventMsg = z.object({
+  v: z.literal(1),
+  type: z.literal("event"),
+  path: z.string().startsWith("/"),
+  payload: z.unknown().optional(),
+});
+
+export const AnyInbound = z.union([ResponseMsg, EventMsg]);
 export type RequestMsgT = z.infer<typeof RequestMsg>;
 export type ResponseMsgT = z.infer<typeof ResponseMsg>;
+export type EventMsgT = z.infer<typeof EventMsg>;
 
 export type BridgeState = "Opening" | "Closing" | "Open" | "Closed" | "Error";
 export interface BridgeStatus {

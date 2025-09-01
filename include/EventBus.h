@@ -46,6 +46,41 @@ public:
 };
 
 /**
+ * Simple EventData implementation for events that only need to carry the event type
+ * Used when no additional data is needed beyond the event type itself
+ */
+class SimpleEventData : public EventData {
+private:
+    BridgeEvent eventType_;
+    
+public:
+    explicit SimpleEventData(BridgeEvent eventType) : eventType_(eventType) {}
+    
+    const char* getEventType() const override;
+    BridgeEvent getEventEnum() const override { return eventType_; }
+};
+
+/**
+ * EventData implementation for state change events
+ * Carries information about state transitions
+ */
+class StateChangeData : public EventData {
+private:
+    BridgeState newState_;
+    BridgeState previousState_;
+    
+public:
+    StateChangeData(BridgeState newState, BridgeState previousState) 
+        : newState_(newState), previousState_(previousState) {}
+    
+    const char* getEventType() const override { return "STATE_CHANGED"; }
+    BridgeEvent getEventEnum() const override { return BridgeEvent::STATE_CHANGED; }
+    
+    BridgeState getNewState() const { return newState_; }
+    BridgeState getPreviousState() const { return previousState_; }
+};
+
+/**
  * Represents a subscription to an event type
  * Contains both the callback function and its priority
  */
@@ -114,9 +149,9 @@ private:
     // Queue of events waiting to be processed
     std::vector<QueuedEvent> eventQueue;
     
-    // Mutexes for thread synchronization
-    mutable std::mutex subscribers_mutex;  // Protects subscribers map
-    std::mutex eventQueue_mutex;           // Protects event queue
+    // Mutexes for thread synchronisation
+    mutable std::recursive_mutex subscribers_mutex;  // Protects subscribers map (recursive for nested calls)
+    std::recursive_mutex eventQueue_mutex;           // Protects event queue (recursive for nested calls)
 };
 
 // Global instance declaration

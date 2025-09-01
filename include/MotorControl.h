@@ -7,13 +7,10 @@ class MotorControl {
 public:
     MotorControl(EventBus& eventBus);
 
-void raiseBridge();
-
-void lowerBridge();
-
-void halt();
+    void raiseBridge();
+    void lowerBridge();
+    void halt();
 
 private:
     EventBus& m_eventBus;
-
 };

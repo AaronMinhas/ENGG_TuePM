@@ -29,8 +29,8 @@ Controller controller(systemEventBus, systemCommandBus, motorControl,
 BridgeStateMachine stateMachine(systemEventBus, systemCommandBus);
 
 // WebSocket and state monitoring components
-StateWriter stateWriter;
-WebSocketServer wss(80, stateWriter);
+StateWriter stateWriter(systemEventBus);
+WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus);
 
 // Task handles for FreeRTOS
 TaskHandle_t controlLogicTaskHandle = NULL;

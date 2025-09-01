@@ -1,6 +1,6 @@
 #include "StateWriter.h"
 
-StateWriter::StateWriter() {}
+StateWriter::StateWriter(EventBus& bus) : bus_(bus) {}
 
 // Below subscribes all events that the FSM / subsystems publish.
 void StateWriter::beginSubscriptions() {
@@ -8,19 +8,22 @@ void StateWriter::beginSubscriptions() {
 
     auto sub = [this](EventData* d){ this->onEvent(d); };
 
-    eventBus.subscribe(E::BOAT_DETECTED, sub);
-    eventBus.subscribe(E::BOAT_PASSED, sub);
-    eventBus.subscribe(E::FAULT_DETECTED, sub);
-    eventBus.subscribe(E::FAULT_CLEARED, sub);
-    eventBus.subscribe(E::MANUAL_OVERRIDE_ACTIVATED, sub);
-    eventBus.subscribe(E::MANUAL_OVERRIDE_DEACTIVATED, sub);
+    bus_.subscribe(E::BOAT_DETECTED, sub);
+    bus_.subscribe(E::BOAT_PASSED, sub);
+    bus_.subscribe(E::FAULT_DETECTED, sub);
+    bus_.subscribe(E::FAULT_CLEARED, sub);
+    bus_.subscribe(E::MANUAL_OVERRIDE_ACTIVATED, sub);
+    bus_.subscribe(E::MANUAL_OVERRIDE_DEACTIVATED, sub);
 
-    eventBus.subscribe(E::TRAFFIC_STOPPED_SUCCESS, sub);
-    eventBus.subscribe(E::BRIDGE_OPENED_SUCCESS, sub);
-    eventBus.subscribe(E::BRIDGE_CLOSED_SUCCESS, sub);
-    eventBus.subscribe(E::TRAFFIC_RESUMED_SUCCESS, sub);
-    eventBus.subscribe(E::INDICATOR_UPDATE_SUCCESS, sub);
-    eventBus.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
+    bus_.subscribe(E::TRAFFIC_STOPPED_SUCCESS, sub);
+    bus_.subscribe(E::BRIDGE_OPENED_SUCCESS, sub);
+    bus_.subscribe(E::BRIDGE_CLOSED_SUCCESS, sub);
+    bus_.subscribe(E::TRAFFIC_RESUMED_SUCCESS, sub);
+    bus_.subscribe(E::INDICATOR_UPDATE_SUCCESS, sub);
+    bus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
+    
+    // Subscribe to actual state changes from the state machine
+    bus_.subscribe(E::STATE_CHANGED, sub);
 }
 
 void StateWriter::fillBridgeStatus(JsonObject obj) const {
@@ -86,40 +89,62 @@ void StateWriter::onEvent(EventData* data) {
     applyEvent(data->getEventEnum(), data);
 }
 
-void StateWriter::applyEvent(BridgeEvent ev, EventData*) {
+void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
     const uint32_t now = millis();
     std::lock_guard<std::mutex> lk(mu_);
 
     switch (ev) {
+        case BridgeEvent::STATE_CHANGED:
+            // Handle actual state changes from the state machine
+            if (data && data->getEventEnum() == BridgeEvent::STATE_CHANGED) {
+                // Safe cast
+                auto* stateData = static_cast<StateChangeData*>(data);
+                bridgeState_ = stateToString(stateData->getNewState());
+                bridgeLastChangeMs_ = now;
+                pushLog(String("State: ") + stateToString(stateData->getPreviousState()) + 
+                       " -> " + stateToString(stateData->getNewState()));
+            }
+            break;
+            
+        case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED:
+            // Log the request but don't change state - wait for STATE_CHANGED
+            pushLog("Request: MANUAL_BRIDGE_OPEN_REQUESTED");
+            break;
+        case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED:
+            // Log the request but don't change state - wait for STATE_CHANGED
+            pushLog("Request: MANUAL_BRIDGE_CLOSE_REQUESTED");
+            break;
+        case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED:
+            carLeft_ = carRight_ = "Red";
+            pushLog("Request: MANUAL_TRAFFIC_STOP_REQUESTED (car=Red,Red)");
+            break;
+        case BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED:
+            carLeft_ = carRight_ = "Green";
+            pushLog("Request: MANUAL_TRAFFIC_RESUME_REQUESTED (car=Green,Green)");
+            break;
         case BridgeEvent::BOAT_DETECTED:
-            bridgeState_ = "WAITING_FOR_BOAT";
             pushLog("Event: BOAT_DETECTED");
             break;
         case BridgeEvent::TRAFFIC_STOPPED_SUCCESS:
-            bridgeState_ = "OPENING";
             carLeft_ = carRight_ = "Red";
             pushLog("Success: TRAFFIC_STOPPED (car=Red,Red)");
             break;
         case BridgeEvent::BRIDGE_OPENED_SUCCESS:
-            bridgeState_ = "OPEN";
             bridgeLockEngaged_ = false;
             bridgeLastChangeMs_ = now;
             boatLeft_ = boatRight_ = "Green";
             pushLog("Success: BRIDGE_OPENED (boat=Green,Green)");
             break;
         case BridgeEvent::BOAT_PASSED:
-            bridgeState_ = "CLOSING";
             pushLog("Event: BOAT_PASSED");
             break;
         case BridgeEvent::BRIDGE_CLOSED_SUCCESS:
-            bridgeState_ = "RESUMING_TRAFFIC";
             bridgeLockEngaged_ = true;
             bridgeLastChangeMs_ = now;
             boatLeft_ = boatRight_ = "Red";
             pushLog("Success: BRIDGE_CLOSED (boat=Red,Red)");
             break;
         case BridgeEvent::TRAFFIC_RESUMED_SUCCESS:
-            bridgeState_ = "IDLE";
             carLeft_ = carRight_ = "Green";
             pushLog("Success: TRAFFIC_RESUMED (car=Green,Green)");
             break;
@@ -128,7 +153,6 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData*) {
             break;
         case BridgeEvent::FAULT_DETECTED:
             inFault_ = true;
-            bridgeState_ = "FAULT";
             carLeft_ = carRight_ = "Red";
             boatLeft_ = boatRight_ = "Red";
             pushLog("EMERGENCY: FAULT_DETECTED");
@@ -138,21 +162,18 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData*) {
             break;
         case BridgeEvent::FAULT_CLEARED:
             inFault_ = false;
-            bridgeState_ = "IDLE";
             bridgeLockEngaged_ = true;
             carLeft_ = carRight_ = "Green";
             boatLeft_ = boatRight_ = "Red";
-            pushLog("Event: FAULT_CLEARED -> IDLE");
+            pushLog("Event: FAULT_CLEARED");
             break;
         case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED:
             manualMode_ = true;
-            bridgeState_ = "MANUAL_MODE";
             pushLog("Event: MANUAL_OVERRIDE_ACTIVATED");
             break;
         case BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED:
             manualMode_ = false;
-            bridgeState_ = "IDLE";
-            pushLog("Event: MANUAL_OVERRIDE_DEACTIVATED -> IDLE");
+            pushLog("Event: MANUAL_OVERRIDE_DEACTIVATED");
             break;
         default:
             pushLog(String("Event: ") + eventName(ev));
@@ -181,6 +202,29 @@ const char* StateWriter::eventName(BridgeEvent ev) {
     case BridgeEvent::FAULT_CLEARED: return "FAULT_CLEARED";
     case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED: return "MANUAL_OVERRIDE_ACTIVATED";
     case BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED: return "MANUAL_OVERRIDE_DEACTIVATED";
+    case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED: return "MANUAL_BRIDGE_OPEN_REQUESTED";
+    case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED: return "MANUAL_BRIDGE_CLOSE_REQUESTED";
+    case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED: return "MANUAL_TRAFFIC_STOP_REQUESTED";
+    case BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED: return "MANUAL_TRAFFIC_RESUME_REQUESTED";
+    case BridgeEvent::STATE_CHANGED: return "STATE_CHANGED";
     default: return "UNKNOWN_EVENT";
+  }
+}
+
+const char* StateWriter::stateToString(BridgeState state) {
+  switch (state) {
+    case BridgeState::IDLE: return "IDLE";
+    case BridgeState::STOPPING_TRAFFIC: return "STOPPING_TRAFFIC";
+    case BridgeState::OPENING: return "OPENING";
+    case BridgeState::OPEN: return "OPEN";
+    case BridgeState::CLOSING: return "CLOSING";
+    case BridgeState::RESUMING_TRAFFIC: return "RESUMING_TRAFFIC";
+    case BridgeState::FAULT: return "FAULT";
+    case BridgeState::MANUAL_MODE: return "MANUAL_MODE";
+    case BridgeState::MANUAL_OPENING: return "MANUAL_OPENING";
+    case BridgeState::MANUAL_OPEN: return "MANUAL_OPEN";
+    case BridgeState::MANUAL_CLOSING: return "MANUAL_CLOSING";
+    case BridgeState::MANUAL_CLOSED: return "MANUAL_CLOSED";
+    default: return "UNKNOWN_STATE";
   }
 }

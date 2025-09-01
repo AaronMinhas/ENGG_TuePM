@@ -8,7 +8,7 @@
 
 class StateWriter {
 public:
-  StateWriter();
+  explicit StateWriter(EventBus& bus);
 
   void beginSubscriptions();
 
@@ -22,6 +22,7 @@ public:
   std::vector<String> getActivityLog() const;
 
 private:
+  EventBus& bus_;
   mutable std::mutex mu_;
 
   String bridgeState_ = "IDLE";
@@ -45,4 +46,5 @@ private:
   void pushLog(const String& line);
 
   static const char* eventName(BridgeEvent ev);
+  static const char* stateToString(BridgeState state);
 };
