@@ -46,20 +46,21 @@ export interface TrafficLightStatus<TLight> {
   receivedAt?: number;
 }
 
-export type CarTrafficLight = "Red" | "Yellow" | "Green";
+export type CarTrafficState = "Red" | "Yellow" | "Green";
 export interface CarTrafficStatus {
-  left: TrafficLightStatus<CarTrafficLight>;
-  right: TrafficLightStatus<CarTrafficLight>;
+  left: TrafficLightStatus<CarTrafficState>;
+  right: TrafficLightStatus<CarTrafficState>;
 }
 
-export type BoatTrafficLight = "Red" | "Green";
+export type BoatTrafficState = "Red" | "Green";
 export interface BoatTrafficStatus {
-  left: TrafficLightStatus<BoatTrafficLight>;
-  right: TrafficLightStatus<BoatTrafficLight>;
+  left: TrafficLightStatus<BoatTrafficState>;
+  right: TrafficLightStatus<BoatTrafficState>;
 }
 
+export type SystemState = "Connected" | "Connecting" | "Disconnected";
 export interface SystemStatus {
-  connection: "Connected" | "Connecting" | "Disconnected";
+  connection: SystemState;
   rssi?: number;
   uptimeMs?: number;
   receivedAt?: number;

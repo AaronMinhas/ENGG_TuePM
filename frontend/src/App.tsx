@@ -32,34 +32,29 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getESPClient,
-  getBridgeStatus,
-  getCarTrafficStatus,
-  getBoatTrafficStatus,
-  getSystemStatus,
+  getBridgeState,
+  getCarTrafficState,
+  getBoatTrafficState,
+  getSystemState,
   setBridgeState,
-  setCarTraffic,
-  setBoatTraffic,
+  setCarTrafficState,
+  setBoatTrafficState,
 } from "./lib/api";
-import type { EventMsgT } from "./lib/schema";
 import type {
   BridgeStatus,
   CarTrafficStatus,
+  CarTrafficState,
   BoatTrafficStatus,
+  BoatTrafficState,
   SystemStatus,
-  BoatTrafficLight,
-  CarTrafficLight,
+  EventMsgT,
 } from "./lib/schema";
+import { IP, ActivityEntry, Icon } from "./types/GenTypes";
 
 import TopNav from "./components/TopNav";
 import DashCard from "./components/DashCard";
 import BridgeCard from "./components/BridgeCard";
 import ActivitySec from "./components/ActivitySec";
-
-type ActivityEntry = {
-  type: "sent" | "received";
-  message: string;
-  timestamp: number;
-};
 
 function App() {
   const [packetsSent, setPacketsSent] = useState(() => {
@@ -74,10 +69,10 @@ function App() {
   const [lastReceivedAt, setLastReceivedAt] = useState<number | null>(null);
 
   const [wsStatus, setWsStatus] = useState<"Connecting" | "Open" | "Closed">("Connecting");
-  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
-  const [carTraffic, setCarTrafficState] = useState<CarTrafficStatus | null>(null);
-  const [boatTraffic, setBoatTrafficState] = useState<BoatTrafficStatus | null>(null);
-  const [system, setSystem] = useState<SystemStatus | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus | null>(null);
+  const [carTrafficStatus, setCarTrafficStatus] = useState<CarTrafficStatus | null>(null);
+  const [boatTrafficStatus, setBoatTrafficStatus] = useState<BoatTrafficStatus | null>(null);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
 
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
   const lastBridgeStateRef = useRef<string | null>(null);
@@ -99,9 +94,9 @@ function App() {
     try {
       setPacketsSent((prev) => prev + 1);
       setLastSentAt(Date.now());
-      const data = await getBridgeStatus();
+      const data = await getBridgeState();
       setLastReceivedAt(Date.now());
-      setBridge({ ...data, receivedAt: Date.now() });
+      setBridgeStatus({ ...data, receivedAt: Date.now() });
     } catch (e) {
       console.error("Bridge status error:", e);
     }
@@ -111,10 +106,10 @@ function App() {
     try {
       setPacketsSent((prev) => prev + 1);
       setLastSentAt(Date.now());
-      const data = await getCarTrafficStatus();
+      const data = await getCarTrafficState();
       setPacketsReceived((prev) => prev + 1);
       setLastReceivedAt(Date.now());
-      setCarTrafficState({
+      setCarTrafficStatus({
         left: { ...data.left, receivedAt: Date.now() },
         right: { ...data.right, receivedAt: Date.now() },
       });
@@ -127,10 +122,10 @@ function App() {
     try {
       setPacketsSent((prev) => prev + 1);
       setLastSentAt(Date.now());
-      const data = await getBoatTrafficStatus();
+      const data = await getBoatTrafficState();
       setPacketsReceived((prev) => prev + 1);
       setLastReceivedAt(Date.now());
-      setBoatTrafficState({
+      setBoatTrafficStatus({
         left: { ...data.left, receivedAt: Date.now() },
         right: { ...data.right, receivedAt: Date.now() },
       });
@@ -145,10 +140,10 @@ function App() {
       setLastSentAt(Date.now());
       logActivity("sent", "System status request");
 
-      const data = await getSystemStatus();
+      const data = await getSystemState();
       setPacketsReceived((prev) => prev + 1);
       setLastReceivedAt(Date.now());
-      setSystem({ ...data, receivedAt: Date.now() });
+      setSystemStatus({ ...data, receivedAt: Date.now() });
       logActivity("received", `System status: ${data.connection}`);
     } catch (e) {
       console.error("System status error:", e);
@@ -163,9 +158,14 @@ function App() {
     const data: any = await setBridgeState("Open");
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
-    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridge?.state ?? "";
-    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridge?.lastChangeMs ?? 0;
-    setBridge({ state, lastChangeMs, lockEngaged: (data.lockEngaged ?? data.current?.lockEngaged) ?? false, receivedAt: Date.now() });
+    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridgeStatus?.state ?? "";
+    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridgeStatus?.lastChangeMs ?? 0;
+    setBridgeStatus({
+      state,
+      lastChangeMs,
+      lockEngaged: data.lockEngaged ?? data.current?.lockEngaged ?? false,
+      receivedAt: Date.now(),
+    });
   };
 
   const handleCloseBridge = async () => {
@@ -176,51 +176,48 @@ function App() {
     const data: any = await setBridgeState("Closed");
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
-    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridge?.state ?? "";
-    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridge?.lastChangeMs ?? 0;
-    setBridge({ state, lastChangeMs, lockEngaged: (data.lockEngaged ?? data.current?.lockEngaged) ?? false, receivedAt: Date.now() });
+    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridgeStatus?.state ?? "";
+    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridgeStatus?.lastChangeMs ?? 0;
+    setBridgeStatus({
+      state,
+      lastChangeMs,
+      lockEngaged: data.lockEngaged ?? data.current?.lockEngaged ?? false,
+      receivedAt: Date.now(),
+    });
   };
 
-  const handleCarTraffic = async (side: "left" | "right", value: CarTrafficLight) => {
+  const handleCarTraffic = async (side: "left" | "right", value: CarTrafficState) => {
     setPacketsSent((prev) => prev + 1);
     setLastSentAt(Date.now());
     logActivity("sent", `Change ${side} car traffic light to: ${value}`);
 
-    const data = await setCarTraffic(side, value);
+    const data = await setCarTrafficState(side, value);
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
-    setCarTrafficState(() => ({
+    setCarTrafficStatus(() => ({
       left: { ...data.left, receivedAt: Date.now() },
       right: { ...data.right, receivedAt: Date.now() },
     }));
-    logActivity(
-      "received",
-      `Car traffic ${side} state: ${side === "left" ? `${data.left.value}` : `${data.right.value}`}`
-    );
+    logActivity("received", `Car traffic ${side} state: ${value}`);
   };
 
-  const handleBoatTraffic = async (side: "left" | "right", value: BoatTrafficLight) => {
+  const handleBoatTraffic = async (side: "left" | "right", value: BoatTrafficState) => {
     setPacketsSent((prev) => prev + 1);
     setLastSentAt(Date.now());
     logActivity("sent", `Change ${side} boat traffic light: ${value}`);
 
-    const data = await setBoatTraffic(side, value);
+    const data = await setBoatTrafficState(side, value);
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
-    setBoatTrafficState({
+    setBoatTrafficStatus({
       left: { ...data.left, receivedAt: Date.now() },
       right: { ...data.right, receivedAt: Date.now() },
     });
-    logActivity(
-      "received",
-      `Boat traffic ${side} state: ${side === "left" ? `${data.left.value}` : `${data.right.value}`}`
-    );
+    logActivity("received", `Boat traffic ${side} state: ${value}`);
   };
 
   useEffect(() => {
-    // const client = getESPClient("ws://192.168.0.173/ws"); // <- Josh testing.
-    const client = getESPClient("ws://192.168.1.247/ws"); // <- Aaron testing.
-    // const client = getESPClient("ws://172.20.10.7/ws");
+    const client = getESPClient(IP.JOSH_1);
     client.onStatus(setWsStatus);
 
     // Real-time Activity from snapshot events
@@ -233,20 +230,44 @@ function App() {
       const logArr: string[] = Array.isArray(payload.log) ? payload.log : [];
 
       // Update tiles opportunistically
-      if (bridge.state) setBridge({ state: bridge.state, lastChangeMs: bridge.lastChangeMs || 0, lockEngaged: !!bridge.lockEngaged, receivedAt: Date.now() });
+      if (bridge.state)
+        setBridgeStatus({
+          state: bridge.state,
+          lastChangeMs: bridge.lastChangeMs || 0,
+          lockEngaged: !!bridge.lockEngaged,
+          receivedAt: Date.now(),
+        });
       if (traffic.car) {
-        setCarTrafficState({
-          left: { value: traffic.car.left?.value ?? (carTraffic?.left.value || "Green"), receivedAt: Date.now() },
-          right: { value: traffic.car.right?.value ?? (carTraffic?.right.value || "Green"), receivedAt: Date.now() },
+        setCarTrafficStatus({
+          left: {
+            value: traffic.car.left?.value ?? (carTrafficStatus?.left.value || "Green"),
+            receivedAt: Date.now(),
+          },
+          right: {
+            value: traffic.car.right?.value ?? (carTrafficStatus?.right.value || "Green"),
+            receivedAt: Date.now(),
+          },
         });
       }
       if (traffic.boat) {
-        setBoatTrafficState({
-          left: { value: traffic.boat.left?.value ?? (boatTraffic?.left.value || "Red"), receivedAt: Date.now() },
-          right: { value: traffic.boat.right?.value ?? (boatTraffic?.right.value || "Red"), receivedAt: Date.now() },
+        setBoatTrafficStatus({
+          left: {
+            value: traffic.boat.left?.value ?? (boatTrafficStatus?.left.value || "Red"),
+            receivedAt: Date.now(),
+          },
+          right: {
+            value: traffic.boat.right?.value ?? (boatTrafficStatus?.right.value || "Red"),
+            receivedAt: Date.now(),
+          },
         });
       }
-      if (sys.connection) setSystem({ connection: sys.connection, rssi: sys.rssi, uptimeMs: sys.uptimeMs, receivedAt: Date.now() });
+      if (sys.connection)
+        setSystemStatus({
+          connection: sys.connection,
+          rssi: sys.rssi,
+          uptimeMs: sys.uptimeMs,
+          receivedAt: Date.now(),
+        });
 
       // Activity: log bridge state changes
       if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
@@ -275,22 +296,22 @@ function App() {
     const poll = async () => {
       try {
         const [b, ct, bt, s] = await Promise.all([
-          getBridgeStatus(),
-          getCarTrafficStatus(),
-          getBoatTrafficStatus(),
-          getSystemStatus(),
+          getBridgeState(),
+          getCarTrafficState(),
+          getBoatTrafficState(),
+          getSystemState(),
         ]);
         setPacketsReceived((prev) => prev + 4);
-        setBridge({ ...b, receivedAt: Date.now() });
-        setCarTrafficState({
+        setBridgeStatus({ ...b, receivedAt: Date.now() });
+        setCarTrafficStatus({
           left: { ...ct.left, receivedAt: Date.now() },
           right: { ...ct.right, receivedAt: Date.now() },
         });
-        setBoatTrafficState({
+        setBoatTrafficStatus({
           left: { ...bt.left, receivedAt: Date.now() },
           right: { ...bt.right, receivedAt: Date.now() },
         });
-        setSystem({ ...s, receivedAt: Date.now() });
+        setSystemStatus({ ...s, receivedAt: Date.now() });
       } catch (err) {
         console.error("Poll error:", err);
       }
@@ -315,91 +336,105 @@ function App() {
         >
           <DashCard
             title="Bridge State"
+            variant="STATE"
+            iconT={Icon.BRIDGE}
             options={[
-              { label: "Open", action: () => handleOpenBridge() },
-              { label: "Close", action: () => handleCloseBridge() },
+              { id: "d-b-o", label: "Open", action: () => handleOpenBridge() },
+              { id: "d-b-c", label: "Close", action: () => handleCloseBridge() },
             ]}
-            description={bridge?.state || ""}
-            updatedAt={bridge?.receivedAt ? timeAgo(bridge?.receivedAt) : ""}
-            cardType="STATE"
-            iconType="BRIDGE"
-            bridgeStateType={bridge?.state || undefined}
+            description={bridgeStatus?.state || ""}
+            updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
+            status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
           />
           <DashCard
             title="Left Car Traffic"
+            variant="STATE"
+            iconT={Icon.CAR}
             options={[
-              { label: "Red", action: () => handleCarTraffic("left", "Red") },
-              { label: "Yellow", action: () => handleCarTraffic("left", "Yellow") },
-              { label: "Green", action: () => handleCarTraffic("left", "Green") },
+              { id: "d-lc-r", label: "Red", action: () => handleCarTraffic("left", "Red") },
+              { id: "d-lc-y", label: "Yellow", action: () => handleCarTraffic("left", "Yellow") },
+              { id: "d-lc-g", label: "Green", action: () => handleCarTraffic("left", "Green") },
             ]}
-            description={carTraffic?.left.value || ""}
-            updatedAt={carTraffic?.left.receivedAt ? timeAgo(carTraffic?.left.receivedAt) : ""}
-            cardType="STATE"
-            iconType="CAR"
-            carStateType={carTraffic?.left.value || undefined}
+            description={carTrafficStatus?.left.value || ""}
+            updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
+            status={
+              carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
+            }
           />
           <DashCard
             title="Left Boat Traffic"
+            variant="STATE"
+            iconT={Icon.BOAT}
             options={[
-              { label: "Red", action: () => handleBoatTraffic("left", "Red") },
-              { label: "Green", action: () => handleBoatTraffic("left", "Green") },
+              { id: "d-lb-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
+              { id: "d-lb-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
             ]}
-            description={boatTraffic?.left.value || ""}
-            updatedAt={boatTraffic?.left.receivedAt ? timeAgo(boatTraffic?.left.receivedAt) : ""}
-            cardType="STATE"
-            iconType="BOAT"
-            boatStateType={boatTraffic?.left.value || undefined}
+            description={boatTrafficStatus?.left.value || ""}
+            updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
+            status={
+              boatTrafficStatus?.left.value
+                ? { kind: "boat", value: boatTrafficStatus.left.value }
+                : undefined
+            }
           />
           <ActivitySec log={activityLog} />
 
           <DashCard
             title="System State"
-            options={[{ label: "Update Status", action: () => handleFetchSystem() }]}
-            description={system?.connection || ""}
-            updatedAt={system?.receivedAt ? timeAgo(system?.receivedAt) : ""}
-            cardType="STATE"
-            iconType="SYSTEM"
-            systemStateType={system?.connection || undefined}
+            variant="STATE"
+            iconT={Icon.SYSTEM}
+            options={[{ id: "d-s", label: "Update Status", action: () => handleFetchSystem() }]}
+            description={systemStatus?.connection || ""}
+            updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
+            status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
           />
 
           <DashCard
             title="Right Car Traffic"
+            variant="STATE"
+            iconT={Icon.CAR}
             options={[
-              { label: "Red", action: () => handleCarTraffic("right", "Red") },
-              { label: "Yellow", action: () => handleCarTraffic("right", "Yellow") },
-              { label: "Green", action: () => handleCarTraffic("right", "Green") },
+              { id: "d-rc-r", label: "Red", action: () => handleCarTraffic("right", "Red") },
+              { id: "d-rc-y", label: "Yellow", action: () => handleCarTraffic("right", "Yellow") },
+              { id: "d-rc-g", label: "Green", action: () => handleCarTraffic("right", "Green") },
             ]}
-            description={carTraffic?.right.value || ""}
-            updatedAt={carTraffic?.right.receivedAt ? timeAgo(carTraffic?.right.receivedAt) : ""}
-            cardType="STATE"
-            iconType="CAR"
-            carStateType={carTraffic?.right.value || undefined}
+            description={carTrafficStatus?.right.value || ""}
+            updatedAt={carTrafficStatus?.right.receivedAt ? timeAgo(carTrafficStatus?.right.receivedAt) : ""}
+            status={
+              carTrafficStatus?.right.value ? { kind: "car", value: carTrafficStatus.right.value } : undefined
+            }
           />
           <DashCard
             title="Right Boat Traffic"
+            variant="STATE"
+            iconT={Icon.BOAT}
             options={[
-              { label: "Red", action: () => handleBoatTraffic("right", "Red") },
-              { label: "Green", action: () => handleBoatTraffic("right", "Green") },
+              { id: "d-rb-r", label: "Red", action: () => handleBoatTraffic("right", "Red") },
+              { id: "d-rb-g", label: "Green", action: () => handleBoatTraffic("right", "Green") },
             ]}
-            description={boatTraffic?.right.value || ""}
-            updatedAt={boatTraffic?.right.receivedAt ? timeAgo(boatTraffic?.right.receivedAt) : ""}
-            cardType="STATE"
-            iconType="BOAT"
-            boatStateType={boatTraffic?.right.value || undefined}
+            description={boatTrafficStatus?.right.value || ""}
+            updatedAt={
+              boatTrafficStatus?.right.receivedAt ? timeAgo(boatTrafficStatus?.right.receivedAt) : ""
+            }
+            status={
+              boatTrafficStatus?.right.value
+                ? { kind: "boat", value: boatTrafficStatus.right.value }
+                : undefined
+            }
           />
 
           <DashCard
             title="Packets Sent"
+            iconT={Icon.PACKETS_SEND}
             description={packetsSent.toString()}
             updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
-            iconType="PACKETS_SEND"
           />
           <BridgeCard />
           <DashCard
             title="Packets Received"
+            iconT={Icon.PACKETS_REC}
             description={packetsReceived.toString()}
             updatedAt={lastReceivedAt ? timeAgo(lastReceivedAt) : ""}
-            iconType="PACKETS_REC"
           />
         </div>
 
@@ -411,88 +446,102 @@ function App() {
 
           <DashCard
             title="Bridge State"
+            variant="STATE"
+            iconT={Icon.BRIDGE}
             options={[
-              { label: "Open", action: () => handleOpenBridge() },
-              { label: "Close", action: () => handleCloseBridge() },
+              { id: "m-b-o", label: "Open", action: () => handleOpenBridge() },
+              { id: "m-b-c", label: "Close", action: () => handleCloseBridge() },
             ]}
-            description={bridge?.state || ""}
-            updatedAt={bridge?.receivedAt ? timeAgo(bridge?.receivedAt) : ""}
-            cardType="STATE"
-            iconType="BRIDGE"
-            bridgeStateType={bridge?.state || undefined}
+            description={bridgeStatus?.state || ""}
+            updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
+            status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
           />
           <DashCard
             title="System State"
-            options={[{ label: "Update Status", action: () => handleFetchSystem() }]}
-            description={system?.connection || ""}
-            updatedAt={system?.receivedAt ? timeAgo(system?.receivedAt) : ""}
-            cardType="STATE"
-            iconType="SYSTEM"
-            systemStateType={system?.connection || undefined}
+            variant="STATE"
+            iconT={Icon.SYSTEM}
+            options={[{ id: "m-s", label: "Update Status", action: () => handleFetchSystem() }]}
+            description={systemStatus?.connection || ""}
+            updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
+            status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
           />
 
           <DashCard
             title="Left Car Traffic"
+            variant="STATE"
+            iconT={Icon.CAR}
             options={[
-              { label: "Red", action: () => handleCarTraffic("left", "Red") },
-              { label: "Yellow", action: () => handleCarTraffic("left", "Yellow") },
-              { label: "Green", action: () => handleCarTraffic("left", "Green") },
+              { id: "m-lc-r", label: "Red", action: () => handleCarTraffic("left", "Red") },
+              { id: "m-lc-y", label: "Yellow", action: () => handleCarTraffic("left", "Yellow") },
+              { id: "m-lc-g", label: "Green", action: () => handleCarTraffic("left", "Green") },
             ]}
-            description={carTraffic?.left.value || ""}
-            updatedAt={carTraffic?.left.receivedAt ? timeAgo(carTraffic?.left.receivedAt) : ""}
-            cardType="STATE"
-            iconType="CAR"
-            carStateType={carTraffic?.left.value || undefined}
+            description={carTrafficStatus?.left.value || ""}
+            updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
+            status={
+              carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
+            }
           />
           <DashCard
             title="Left Boat Traffic"
+            variant="STATE"
+            iconT={Icon.BOAT}
             options={[
-              { label: "Red", action: () => handleBoatTraffic("left", "Red") },
-              { label: "Green", action: () => handleBoatTraffic("left", "Green") },
+              { id: "m-lb-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
+              { id: "m-lb-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
             ]}
-            description={boatTraffic?.left.value || ""}
-            updatedAt={boatTraffic?.left.receivedAt ? timeAgo(boatTraffic?.left.receivedAt) : ""}
-            cardType="STATE"
-            iconType="BOAT"
-            boatStateType={boatTraffic?.left.value || undefined}
+            description={boatTrafficStatus?.left.value || ""}
+            updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
+            status={
+              boatTrafficStatus?.left.value
+                ? { kind: "boat", value: boatTrafficStatus.left.value }
+                : undefined
+            }
           />
           <DashCard
             title="Right Car Traffic"
+            variant="STATE"
+            iconT={Icon.CAR}
             options={[
-              { label: "Red", action: () => handleCarTraffic("right", "Red") },
-              { label: "Yellow", action: () => handleCarTraffic("right", "Yellow") },
-              { label: "Green", action: () => handleCarTraffic("right", "Green") },
+              { id: "m-rc-r", label: "Red", action: () => handleCarTraffic("right", "Red") },
+              { id: "m-rc-y", label: "Yellow", action: () => handleCarTraffic("right", "Yellow") },
+              { id: "m-rc-g", label: "Green", action: () => handleCarTraffic("right", "Green") },
             ]}
-            description={carTraffic?.right.value || ""}
-            updatedAt={carTraffic?.right.receivedAt ? timeAgo(carTraffic?.right.receivedAt) : ""}
-            cardType="STATE"
-            iconType="CAR"
-            carStateType={carTraffic?.right.value || undefined}
+            description={carTrafficStatus?.right.value || ""}
+            updatedAt={carTrafficStatus?.right.receivedAt ? timeAgo(carTrafficStatus?.right.receivedAt) : ""}
+            status={
+              carTrafficStatus?.right.value ? { kind: "car", value: carTrafficStatus.right.value } : undefined
+            }
           />
           <DashCard
             title="Right Boat Traffic"
+            variant="STATE"
+            iconT={Icon.BOAT}
             options={[
-              { label: "Red", action: () => handleBoatTraffic("right", "Red") },
-              { label: "Green", action: () => handleBoatTraffic("right", "Green") },
+              { id: "m-rb-r", label: "Red", action: () => handleBoatTraffic("right", "Red") },
+              { id: "m-rb-g", label: "Green", action: () => handleBoatTraffic("right", "Green") },
             ]}
-            description={boatTraffic?.right.value || ""}
-            updatedAt={boatTraffic?.right.receivedAt ? timeAgo(boatTraffic?.right.receivedAt) : ""}
-            cardType="STATE"
-            iconType="BOAT"
-            boatStateType={boatTraffic?.right.value || undefined}
+            description={boatTrafficStatus?.right.value || ""}
+            updatedAt={
+              boatTrafficStatus?.right.receivedAt ? timeAgo(boatTrafficStatus?.right.receivedAt) : ""
+            }
+            status={
+              boatTrafficStatus?.right.value
+                ? { kind: "boat", value: boatTrafficStatus.right.value }
+                : undefined
+            }
           />
 
           <DashCard
             title="Packets Sent"
+            iconT={Icon.PACKETS_SEND}
             description={packetsSent.toString()}
             updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
-            iconType="PACKETS_SEND"
           />
           <DashCard
             title="Packets Received"
+            iconT={Icon.PACKETS_REC}
             description={packetsReceived.toString()}
             updatedAt={lastReceivedAt ? timeAgo(lastReceivedAt) : ""}
-            iconType="PACKETS_REC"
           />
         </div>
       </div>

@@ -1,18 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { CustomDropdownProps } from "../types/CustomDropdown";
 import { ChevronDown } from "lucide-react";
 
-export type DropdownOption = {
-  label: string;
-  action: () => void | Promise<void>;
-};
+export function CustomDropdown(props: Readonly<CustomDropdownProps>) {
+  const { options, selected, colour } = props;
 
-type CustomDropdownProps = {
-  options: DropdownOption[];
-  selected?: string;
-  colour?: string;
-};
-
-export function CustomDropdown({ options, selected, colour }: CustomDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -49,7 +41,7 @@ export function CustomDropdown({ options, selected, colour }: CustomDropdownProp
         <ul className="absolute z-10 mt-1 w-full bg-white border border-base-400 rounded-md shadow-md">
           {options.map((opt) => (
             <li
-              key={opt.label}
+              key={opt.id}
               onClick={() => {
                 opt.action();
                 setOpen(false);

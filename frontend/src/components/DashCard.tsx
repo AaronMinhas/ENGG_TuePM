@@ -3,56 +3,30 @@
  * Refer to the dashboard design in the repository README.
  */
 
-import { Car, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
-import { CustomDropdown, DropdownOption } from "./CustomDropdown";
+import { type LucideIcon, Car as CarIcon, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
+import { CustomDropdown } from "./CustomDropdown";
+import { Icon as IconKey } from "../types/GenTypes";
+import { DashCardProp, Status } from "../types/DashCard";
 import BridgeIcon from "./BridgeIcon";
 
-type DashCardProp = {
-  title: string;
-  description: string;
-  options?: DropdownOption[];
-  updatedAt: string;
-  cardType?: "STATE" | null;
-  iconType?: "BRIDGE" | "CAR" | "BOAT" | "SYSTEM" | "PACKETS_SEND" | "PACKETS_REC" | "ACTIVITY" | "";
-  bridgeStateType?: "Opening" | "Closing" | "Open" | "Closed" | "Error";
-  systemStateType?: "Connected" | "Connecting" | "Disconnected";
-  carStateType?: "Green" | "Yellow" | "Red";
-  boatStateType?: "Green" | "Red";
-};
-
 export default function DashCard(props: Readonly<DashCardProp>) {
-  const {
-    title,
-    description,
-    options,
-    updatedAt,
-    cardType,
-    iconType = "",
-    bridgeStateType,
-    systemStateType,
-    carStateType,
-    boatStateType,
-  } = props;
+  const { title, description, options, updatedAt, variant, iconT, status } = props;
 
-  const Icon = iconMap[iconType] ?? (() => null);
+  const Icon = iconT ? iconMap[iconT] : null;
 
-  const statusColour = getStateColour(carStateType, boatStateType, systemStateType, bridgeStateType);
+  const statusColour = getStatusColour(status);
 
   return (
     <div className="w-full h-35 bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
       <div className="flex justify-between items-center">
         <div className="flex gap-2">
-          <Icon size={22} />
+          {Icon ? <Icon size={22} /> : null}
           <span className="font-semibold">{title}</span>
         </div>
-
-        {/* <button className="cursor-pointer">
-          <Settings size={20} />
-        </button> */}
       </div>
 
       <div>
-        {cardType === "STATE" ? (
+        {variant === "STATE" ? (
           <CustomDropdown options={options ?? []} selected={description} colour={statusColour} />
         ) : (
           <span className="text-2xl font-bold">{description}</span>
@@ -64,62 +38,44 @@ export default function DashCard(props: Readonly<DashCardProp>) {
   );
 }
 
-const iconMap: Record<NonNullable<DashCardProp["iconType"]>, React.ElementType> = {
+const iconMap: Record<IconKey, LucideIcon> = {
   BRIDGE: BridgeIcon,
-  CAR: Car,
+  CAR: CarIcon,
   BOAT: Ship,
   SYSTEM: RadioTower,
   PACKETS_SEND: Send,
   PACKETS_REC: SendToBack,
   ACTIVITY: Activity,
-  "": () => null,
 };
 
-function getStateColour(
-  carStateType?: DashCardProp["carStateType"],
-  boatStateType?: DashCardProp["boatStateType"],
-  systemStateType?: DashCardProp["systemStateType"],
-  bridgeStateType?: DashCardProp["bridgeStateType"]
-) {
-  if (carStateType) {
-    switch (carStateType) {
-      case "Green":
-        return "bg-green-500";
-      case "Yellow":
-        return "bg-yellow-400";
-      case "Red":
-        return "bg-red-500";
-    }
-  }
-  if (boatStateType) {
-    switch (boatStateType) {
-      case "Green":
-        return "bg-green-500";
-      case "Red":
-        return "bg-red-500";
-    }
-  }
-  if (systemStateType) {
-    switch (systemStateType) {
-      case "Connected":
-        return "bg-green-500";
-      case "Connecting":
-        return "bg-blue-500";
-      case "Disconnected":
-        return "bg-red-500";
-    }
-  }
-  if (bridgeStateType) {
-    switch (bridgeStateType) {
-      case "Opening":
-        return "bg-orange-500";
-      case "Closing":
-        return "bg-yellow-400";
-      case "Closed":
-        return "bg-red-300";
-      case "Open":
-        return "bg-orange-300";
-    }
+function getStatusColour(status?: Status): string {
+  if (!status) return "bg-gray-400";
+
+  switch (status.kind) {
+    case "car":
+      if (status.value === "Green") return "bg-green-500";
+      if (status.value === "Yellow") return "bg-yellow-400";
+      if (status.value === "Red") return "bg-red-500";
+      break;
+
+    case "boat":
+      if (status.value === "Green") return "bg-green-500";
+      if (status.value === "Red") return "bg-red-500";
+      break;
+
+    case "system":
+      if (status.value === "Connected") return "bg-green-500";
+      if (status.value === "Connecting") return "bg-blue-500";
+      if (status.value === "Disconnected") return "bg-red-500";
+      break;
+
+    case "bridge":
+      if (status.value === "Opening") return "bg-orange-500";
+      if (status.value === "Closing") return "bg-yellow-400";
+      if (status.value === "Closed") return "bg-red-300";
+      if (status.value === "Open") return "bg-orange-300";
+      if (status.value === "Error") return "bg-red-500";
+      break;
   }
   return "bg-gray-400";
 }
