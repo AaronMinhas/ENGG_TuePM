@@ -1,5 +1,6 @@
 #pragma once
 
+// This is 
 #ifdef UNIT_TEST
 // For unit testing, Arduino header is not needed.
 
@@ -84,10 +85,24 @@ public:
     // priority parameter determines if this is a normal or emergency handler
     void subscribe(BridgeEvent eventType, std::function<void(EventData*)> callback, EventPriority priority = EventPriority::NORMAL);
     
+
+    
+
+    
     // Adds an event to the processing queue
     // eventData can contain additional information about the event
     // priority determines if this event is processed before normal events
-    void publish(BridgeEvent eventType, EventData* eventData = nullptr, EventPriority priority = EventPriority::NORMAL);
+    
+    // void publish(BridgeEvent eventType, EventData* eventData = nullptr,           // This is real
+    //              EventPriority priority = EventPriority::NORMAL);
+
+    // This is mock test area
+    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    virtual void publish(BridgeEvent eventType, EventData* eventData = nullptr, 
+                    EventPriority priority = EventPriority::NORMAL);
+
+    //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    
     
     // Removes a previously registered callback for an event
     void unsubscribe(BridgeEvent eventType, std::function<void(EventData*)> callback);
