@@ -54,6 +54,7 @@ namespace {
     }
   }
 }
+// gggg
 
 
 LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventBus) {
