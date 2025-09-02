@@ -59,11 +59,12 @@ namespace {
 LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventBus) {
     Serial.println("LOCAL_STATE_INDICATOR: Initialised");
     using E = BridgeEvent;
+    // Unified callback for all subscribed events; adjusts local flags/colour policy and refreshes LED.
     auto cb = [this](EventData* d){
     if (!d) return;
     const auto ev = d->getEventEnum();
 
-    // Fault dominates
+    // Fault dominates everything (including SYSTEM_SAFE_SUCCESS coming from controller halt).
     if (ev == E::FAULT_DETECTED || ev == E::SYSTEM_SAFE_SUCCESS) {
       inFault = true; currentColour = Colour::Red; this->setState(); return;
     }
@@ -73,8 +74,10 @@ LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventB
     if (ev == E::MANUAL_OVERRIDE_ACTIVATED)   manual = true;
     if (ev == E::MANUAL_OVERRIDE_DEACTIVATED) manual = false;
 
+    // Colour selection when not in fault:
+    //  - Green  when traffic is normal (resumed/cleared)
+    //  - Yellow when traffic is stopped, bridge just opened/closed, or manual override is on
     if (!inFault) {
-      // Green when traffic resumed/cleared; Yellow during stopped/open/close or manual
       if (ev == E::TRAFFIC_RESUMED_SUCCESS || ev == E::FAULT_CLEARED) {
         currentColour = Colour::Green;
       } else if (ev == E::TRAFFIC_STOPPED_SUCCESS ||
@@ -87,6 +90,7 @@ LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventB
     this->setState();
   };
 
+  // Subscribe to the key events that drive the indicator policy.
   m_eventBus.subscribe(E::TRAFFIC_STOPPED_SUCCESS, cb);
   m_eventBus.subscribe(E::BRIDGE_OPENED_SUCCESS,   cb);
   m_eventBus.subscribe(E::BRIDGE_CLOSED_SUCCESS,   cb);
@@ -105,7 +109,10 @@ void LocalStateIndicator::setState() {
     // TODO: Implement actual hardware control
     // Update LED status indicators, displays, etc.
     // Show current bridge state (idle, opening, open, closing, etc.)
+
+    // Drive the physical LED according to policy; Red dominates if inFault==true.
     setLamp(inFault ? Colour::Red : currentColour);
+    // Notify that the indicator was refreshed.
     m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, nullptr);
     // Publish success event
     Serial.println("LOCAL_STATE_INDICATOR: State display updated successfully");
@@ -118,6 +125,8 @@ void LocalStateIndicator::halt() {
     // TODO: Implement actual hardware control
     // Set status indicators to show fault/emergency state
     // Flash warning lights, show error messages, etc.
+
+    // Force local fault state and show Red immediately.
     inFault = true; currentColour = Colour::Red;
     setLamp(Colour::Red);
     Serial.println("LOCAL_STATE_INDICATOR: Display set to fault state");
