@@ -8,8 +8,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Path to GoogleTest
-set(GOOGLETEST_DIR "/media/ibromr/Yedek/SystemCoding/Macquarie/GoogleTest/googletest")
-add_subdirectory(${GOOGLETEST_DIR} googletest_build)
+# Path to GoogleTest (try teammate’s first, then yours)
+if (EXISTS "/media/ibromr/Yedek/SystemCoding/Macquarie/GoogleTest/googletest")
+    set(GOOGLETEST_DIR "/media/ibromr/Yedek/SystemCoding/Macquarie/GoogleTest/googletest")
+elseif (EXISTS "/Users/cnn/Desktop/gtest/googletest")
+    set(GOOGLETEST_DIR "/Users/cnn/Desktop/gtest/googletest")
+endif()
+
+# Only add if we found something
+if (GOOGLETEST_DIR)
+    add_subdirectory(${GOOGLETEST_DIR} googletest_build)
+else()
+    message(FATAL_ERROR "Could not find GoogleTest directory")
+endif()
 
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/include)
