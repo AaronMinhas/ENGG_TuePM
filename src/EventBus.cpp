@@ -1,3 +1,12 @@
+// This is mock test area
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#ifdef UNIT_TEST
+extern unsigned long mock_millis;
+inline unsigned long millis() { return mock_millis; }
+#endif
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
 #include "EventBus.h"
 
 // Global instance

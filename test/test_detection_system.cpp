@@ -1,13 +1,18 @@
+#ifdef UNIT_TEST
+unsigned long mock_millis = 0;
+#endif
+
 #include <gtest/gtest.h>
 #include "DetectionSystem.h"
 
-// Mock class for EventBus (using real EventBus in your actual code)
+
+// Mock EventBus to capture published events
 class MockEventBus : public EventBus {
 public:
-    MockEventBus() {}
-    ~MockEventBus() {}
-
-    // You can override necessary methods if EventBus has specific logic for your tests
+    BridgeEvent lastEvent = BridgeEvent::FAULT_DETECTED; // Use an existing enum value
+    void publish(BridgeEvent eventType, EventData* eventData = nullptr, EventPriority priority = EventPriority::NORMAL) /* no override */ {
+        lastEvent = eventType;
+    }
 };
 
 // Test: Check if the DetectionSystem initializes correctly
@@ -20,7 +25,14 @@ TEST(DetectionSystemTest, InitializationTest) {
     
     // Initialize the system
     system.begin();
+     // Simulate time passing for debounce
+    //for (int i = 0; i < 2; ++i) {
+        mock_millis = 1001; // Advance time by debounceDelay
+        system.update();
+    //}
+
 
     // Assert: Check if the system is initialized correctly (assuming isInitialized() exists)
-    EXPECT_TRUE(system.isInitialized());  // This method should return true if initialized properly
+    EXPECT_TRUE(system.isInitialized());
+    EXPECT_EQ(mockEventBus.lastEvent, BridgeEvent::BOAT_DETECTED);
 }
