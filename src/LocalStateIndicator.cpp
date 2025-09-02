@@ -1,28 +1,50 @@
 #include "LocalStateIndicator.h"
 #include "BridgeSystemDefs.h"
 #include <Arduino.h>
+
+/*
+  Module: LocalStateIndicator
+  Purpose:
+    - Show the overall system condition on a local tri-LED (R/Y/G).
+    - Subscribe to key events (traffic stopped/resumed, bridge opened/closed, faults, manual mode).
+    - Pick a colour policy:
+        * Red    = fault/safe (dominates)
+        * Yellow = in-between / action ongoing (stopped/opened/closed) or manual override active
+        * Green  = normal traffic resumed / fault cleared
+    - Publish INDICATOR_UPDATE_SUCCESS after each refresh so StateWriter/UI can log/sync.
+*/
 namespace {
+  // LED polarity: set to false if hardware is active-low (LOW = ON).
   constexpr bool ACTIVE_HIGH = true;
+
+  // GPIO pins for the local tri-LED.
   constexpr uint8_t LED_R = 21;
   constexpr uint8_t LED_Y = 19;
   constexpr uint8_t LED_G = 18;
 
+  // One-time pin setup flag.
   bool pinsReady = false;
 
+  // Local colour state for the indicator.
   enum class Colour { Red, Yellow, Green };
   volatile Colour currentColour = Colour::Green;
   volatile bool inFault = false;
   volatile bool manual  = false;
 
+  // Drive one pin ON/OFF honoring ACTIVE_HIGH policy.
   inline void writePin(uint8_t pin, bool on){
     digitalWrite(pin, (on == ACTIVE_HIGH) ? HIGH : LOW);
   }
+
+  // Ensure pins are configured and driven to a safe default (all OFF).
   void ensurePins(){
     if (pinsReady) return;
     pinMode(LED_R, OUTPUT); pinMode(LED_Y, OUTPUT); pinMode(LED_G, OUTPUT);
     writePin(LED_R,false); writePin(LED_Y,false); writePin(LED_G,false);
     pinsReady = true;
   }
+
+  // Set the tri-LED to a specific colour (mutually exclusive).
   void setLamp(Colour c){
     ensurePins();
     switch (c){
