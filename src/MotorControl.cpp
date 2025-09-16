@@ -69,51 +69,22 @@ void MotorControl::raiseBridge() {
         return;
     }
     
-    // REAL MODE: Actual motor control
+    // REAL MODE: Time-based motor control
     m_raisingBridge = true;
     m_motorRunning = true;
     
-    Serial.println("MOTOR CONTROL: Starting to raise bridge");
-    Serial.printf("MOTOR CONTROL: Current encoder count: %ld\n", m_encoderCount);
+    Serial.println("MOTOR CONTROL: Starting to raise bridge (TIME-BASED)");
+    Serial.printf("MOTOR CONTROL: Will run for %lu milliseconds\n", BRIDGE_OPEN_TIME);
     
-    // ENCODER-BASED CONTROL: Use encoder feedback for precise positioning
-    long startCount = m_encoderCount;
-    long targetCount = startCount + BRIDGE_TRAVEL_COUNTS; // Move by bridge travel distance
-    
-    Serial.printf("MOTOR CONTROL: Target count: %ld (travel: %d counts)\n", targetCount, BRIDGE_TRAVEL_COUNTS);
+    // Store operation parameters for non-blocking operation
+    m_operationStartTime = millis();
+    m_operationDuration = BRIDGE_OPEN_TIME;
+    m_lastProgressTime = millis();
     
     // Start motor in forward direction (adjust speed as needed)
     setMotorSpeed(180, true); // 180/255 = ~70% speed, forward direction
     
-    // Monitor movement until target is reached
-    unsigned long startTime = millis();
-    unsigned long timeout = 15000; // 15 second timeout for safety
-    
-    while (m_motorRunning && !isTargetReached(targetCount) && (millis() - startTime) < timeout) {
-        delay(10); // Small delay to prevent overwhelming the serial output
-        
-        // Print progress every 500ms
-        if ((millis() - startTime) % 500 == 0) {
-            Serial.printf("MOTOR CONTROL: Progress - Count: %ld, Target: %ld\n", m_encoderCount, targetCount);
-        }
-    }
-    
-    // Stop motor
-    stopMotor();
-    
-    if (millis() - startTime >= timeout) {
-        Serial.println("MOTOR CONTROL: Bridge raise operation timed out!");
-        // TODO: In real implementation, trigger fault event
-        return;
-    }
-    
-    Serial.printf("MOTOR CONTROL: Bridge raised successfully. Final count: %ld\n", m_encoderCount);
-    
-    // Publish success event
-    auto* eventData = new SimpleEventData(BridgeEvent::BRIDGE_OPENED_SUCCESS);
-    m_eventBus.publish(BridgeEvent::BRIDGE_OPENED_SUCCESS, eventData);
-    
-    Serial.println("MOTOR CONTROL: Success event published");
+    Serial.println("MOTOR CONTROL: Non-blocking operation started. Use checkProgress() to monitor.");
 }
 
 void MotorControl::lowerBridge() {
@@ -144,51 +115,62 @@ void MotorControl::lowerBridge() {
         return;
     }
     
-    // REAL MODE: Actual motor control
+    // REAL MODE: Time-based motor control
     m_raisingBridge = false;
     m_motorRunning = true;
     
-    Serial.println("MOTOR CONTROL: Starting to lower bridge");
-    Serial.printf("MOTOR CONTROL: Current encoder count: %ld\n", m_encoderCount);
+    Serial.println("MOTOR CONTROL: Starting to lower bridge (TIME-BASED)");
+    Serial.printf("MOTOR CONTROL: Will run for %lu milliseconds\n", BRIDGE_CLOSE_TIME);
     
-    // ENCODER-BASED CONTROL: Use encoder feedback for precise positioning
-    long startCount = m_encoderCount;
-    long targetCount = startCount - BRIDGE_TRAVEL_COUNTS; // Move by bridge travel distance
-    
-    Serial.printf("MOTOR CONTROL: Target count: %ld (travel: %d counts)\n", targetCount, BRIDGE_TRAVEL_COUNTS);
+    // Store operation parameters for non-blocking operation
+    m_operationStartTime = millis();
+    m_operationDuration = BRIDGE_CLOSE_TIME;
+    m_lastProgressTime = millis();
     
     // Start motor in reverse direction (adjust speed as needed)
     setMotorSpeed(180, false);
     
-    // Monitor movement until target is reached
-    unsigned long startTime = millis();
-    unsigned long timeout = 15000; // 15 second timeout for safety
-    
-    while (m_motorRunning && !isTargetReached(targetCount) && (millis() - startTime) < timeout) {
-        delay(10); // Small delay to prevent overwhelming the serial output
-        
-        // Print progress every 500ms
-        if ((millis() - startTime) % 500 == 0) {
-            Serial.printf("MOTOR CONTROL: Progress - Count: %ld, Target: %ld\n", m_encoderCount, targetCount);
-        }
+    Serial.println("MOTOR CONTROL: Non-blocking operation started. Use checkProgress() to monitor.");
+}
+
+void MotorControl::checkProgress() {
+    if (!m_motorRunning) {
+        return; // No operation in progress
     }
     
-    // Stop motor
-    stopMotor();
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - m_operationStartTime;
     
-    if (millis() - startTime >= timeout) {
-        Serial.println("MOTOR CONTROL: Bridge lower operation timed out!");
-        // TODO: In real implementation, trigger fault event
+    // Print progress every 1000ms (1 second)
+    if (currentTime - m_lastProgressTime >= 1000) {
+        float percentComplete = (float)elapsedTime / (float)m_operationDuration * 100.0;
+        Serial.printf("MOTOR CONTROL: Progress - %.1f%% complete (%lu/%lu ms)\n", 
+                      percentComplete, elapsedTime, m_operationDuration);
+        m_lastProgressTime = currentTime;
+    }
+    
+    // Check if operation duration completed
+    if (elapsedTime >= m_operationDuration) {
+        stopMotor();
+        Serial.printf("MOTOR CONTROL: Bridge operation completed successfully after %lu ms\n", elapsedTime);
+        
+        // Publish success event
+        BridgeEvent eventType = m_raisingBridge ? BridgeEvent::BRIDGE_OPENED_SUCCESS : BridgeEvent::BRIDGE_CLOSED_SUCCESS;
+        auto* eventData = new SimpleEventData(eventType);
+        m_eventBus.publish(eventType, eventData);
+        
+        Serial.println("MOTOR CONTROL: Success event published");
         return;
     }
     
-    Serial.printf("MOTOR CONTROL: Bridge lowered successfully. Final count: %ld\n", m_encoderCount);
-    
-    // Publish success event
-    auto* eventData = new SimpleEventData(BridgeEvent::BRIDGE_CLOSED_SUCCESS);
-    m_eventBus.publish(BridgeEvent::BRIDGE_CLOSED_SUCCESS, eventData);
-    
-    Serial.println("MOTOR CONTROL: Success event published");
+    // Check for timeout (safety fallback)
+    if (elapsedTime >= OPERATION_TIMEOUT) {
+        stopMotor();
+        Serial.println("MOTOR CONTROL: Bridge operation timed out (safety timeout)!");
+        Serial.printf("MOTOR CONTROL: Timeout details - Elapsed: %lu ms, Duration: %lu ms\n", 
+                      elapsedTime, m_operationDuration);
+        return;
+    }
 }
 
 void MotorControl::halt() {
@@ -285,6 +267,12 @@ void MotorControl::checkSerialCommands() {
             Serial.printf("MOTOR CONTROL: Current mode: %s\n", m_simulationMode ? "SIMULATION" : "REAL");
             Serial.printf("MOTOR CONTROL: Encoder count: %ld\n", m_encoderCount);
             Serial.printf("MOTOR CONTROL: Motor running: %s\n", m_motorRunning ? "YES" : "NO");
+            if (m_motorRunning) {
+                unsigned long elapsed = millis() - m_operationStartTime;
+                float percentComplete = (float)elapsed / (float)m_operationDuration * 100.0;
+                Serial.printf("MOTOR CONTROL: Operation progress: %.1f%% (%lu/%lu ms)\n", 
+                              percentComplete, elapsed, m_operationDuration);
+            }
         }
         else if (command == "help" || command == "?") {
             Serial.println("MOTOR CONTROL: Available commands:");

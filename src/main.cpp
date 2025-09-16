@@ -54,6 +54,9 @@ void controlLogicTask(void* parameters) {
         // Check for motor test commands via serial
         motorControl.checkSerialCommands();
         
+        // Check motor operation progress (non-blocking)
+        motorControl.checkProgress();
+        
         // TODO: Monitor sensors
         // detectionSystem.checkSensors();
         
