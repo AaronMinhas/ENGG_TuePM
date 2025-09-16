@@ -211,9 +211,8 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
 
 void StateWriter::pushLog(const String& line) {
     if (log_.size() >= LOG_CAP_) log_.erase(log_.begin());
-    char ts[32];
-    snprintf(ts, sizeof(ts), "%lu", (unsigned long)millis());
-    log_.push_back(String("[") + ts + "] " + line);
+    // Remove timestamp prefix for cleaner UI logs
+    log_.push_back(line);
 }
 
 const char* StateWriter::eventName(BridgeEvent ev) {

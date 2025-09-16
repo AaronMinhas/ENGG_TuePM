@@ -142,7 +142,7 @@ void EventBus::processEvents() {
         if (subIt != subscribers.end()) {
             // Only log events that have actual impact (non-debug events)
             if ((int)event.eventType < 16) { // Log important events only
-                Serial.printf("EVENT: Type %d → %d subscribers\n", (int)event.eventType, subIt->second.size());
+                Serial.printf("EVENT: %s → %d subscribers\n", bridgeEventToString(event.eventType), subIt->second.size());
             }
             
             for (const auto& subscription : subIt->second) {
