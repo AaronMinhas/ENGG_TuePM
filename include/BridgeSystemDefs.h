@@ -53,6 +53,32 @@ enum class BridgeEvent {
     STATE_CHANGED
 };
 
+// Convert BridgeEvent to readable string
+inline const char* bridgeEventToString(BridgeEvent event) {
+    switch (event) {
+        case BridgeEvent::BOAT_DETECTED: return "BOAT_DETECTED";
+        case BridgeEvent::BOAT_PASSED: return "BOAT_PASSED";
+        case BridgeEvent::FAULT_DETECTED: return "FAULT_DETECTED";
+        case BridgeEvent::FAULT_CLEARED: return "FAULT_CLEARED";
+        case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED: return "MANUAL_OVERRIDE_ACTIVATED";
+        case BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED: return "MANUAL_OVERRIDE_DEACTIVATED";
+        case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED: return "MANUAL_BRIDGE_OPEN_REQUESTED";
+        case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED: return "MANUAL_BRIDGE_CLOSE_REQUESTED";
+        case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED: return "MANUAL_TRAFFIC_STOP_REQUESTED";
+        case BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED: return "MANUAL_TRAFFIC_RESUME_REQUESTED";
+        case BridgeEvent::TRAFFIC_STOPPED_SUCCESS: return "TRAFFIC_STOPPED_SUCCESS";
+        case BridgeEvent::BRIDGE_OPENED_SUCCESS: return "BRIDGE_OPENED_SUCCESS";
+        case BridgeEvent::BRIDGE_CLOSED_SUCCESS: return "BRIDGE_CLOSED_SUCCESS";
+        case BridgeEvent::TRAFFIC_RESUMED_SUCCESS: return "TRAFFIC_RESUMED_SUCCESS";
+        case BridgeEvent::SYSTEM_SAFE_SUCCESS: return "SYSTEM_SAFE_SUCCESS";
+        case BridgeEvent::INDICATOR_UPDATE_SUCCESS: return "INDICATOR_UPDATE_SUCCESS";
+        case BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS: return "CAR_LIGHT_CHANGED_SUCCESS";
+        case BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS: return "BOAT_LIGHT_CHANGED_SUCCESS";
+        case BridgeEvent::STATE_CHANGED: return "STATE_CHANGED";
+        default: return "UNKNOWN_EVENT";
+    }
+}
+
 // System Command Targets
 enum class CommandTarget {
     CONTROLLER,
