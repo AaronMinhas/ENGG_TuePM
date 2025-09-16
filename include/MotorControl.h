@@ -11,7 +11,6 @@ public:
     void raiseBridge();
     void lowerBridge();
     void halt();
-    void checkSerialCommands(); // Check for test commands via serial
     void checkProgress();       // Check motor operation progress (non-blocking)
     
     // Testing and calibration methods
@@ -19,6 +18,10 @@ public:
     void testEncoder();    // Test encoder separately
     long getEncoderCount(); // Get current encoder position
     void resetEncoder();   // Reset encoder count to 0
+
+    // Simulation mode control (for external CLI router)
+    void setSimulationMode(bool enable) { m_simulationMode = enable; }
+    bool isSimulationMode() const { return m_simulationMode; }
 
 private:
     EventBus& m_eventBus;

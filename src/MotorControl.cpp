@@ -16,7 +16,7 @@ MotorControl::MotorControl(EventBus& eventBus)
 }
 
 void MotorControl::init() {
-    Serial.println("MOTOR CONTROL: Initializing motor and encoder...");
+    Serial.println("MOTOR CONTROL: Initialising motor and encoder...");
     
     // Configure motor control pins
     pinMode(MOTOR_PWM_PIN, OUTPUT);
@@ -36,7 +36,7 @@ void MotorControl::init() {
     // Reset encoder count
     resetEncoder();
     
-    Serial.println("MOTOR CONTROL: Initialization complete");
+    Serial.println("MOTOR CONTROL: Initialisation complete");
     Serial.printf("MOTOR CONTROL: Using pins - PWM: %d, DIR1: %d, DIR2: %d, ENC_A: %d, ENC_B: %d\n", 
                   MOTOR_PWM_PIN, MOTOR_DIR_PIN_1, MOTOR_DIR_PIN_2, ENCODER_PIN_A, ENCODER_PIN_B);
 }
@@ -226,73 +226,7 @@ void MotorControl::testEncoder() {
     Serial.printf("MOTOR CONTROL: Encoder test complete. Final count: %ld\n", m_encoderCount);
 }
 
-void MotorControl::checkSerialCommands() {
-    if (Serial.available()) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
-        command.toLowerCase();
-        
-        Serial.printf("MOTOR CONTROL: Received command: '%s'\n", command.c_str());
-        
-        if (command == "test motor" || command == "tm") {
-            testMotor();
-        }
-        else if (command == "test encoder" || command == "te") {
-            testEncoder();
-        }
-        else if (command == "raise" || command == "r") {
-            raiseBridge();
-        }
-        else if (command == "lower" || command == "l") {
-            lowerBridge();
-        }
-        else if (command == "halt" || command == "h" || command == "stop") {
-            halt();
-        }
-        else if (command == "count" || command == "c") {
-            Serial.printf("MOTOR CONTROL: Current encoder count: %ld\n", getEncoderCount());
-        }
-        else if (command == "reset" || command == "0") {
-            resetEncoder();
-        }
-        else if (command == "sim on" || command == "simulation on") {
-            m_simulationMode = true;
-            Serial.println("MOTOR CONTROL: SIMULATION MODE ENABLED - Motor commands will be simulated");
-        }
-        else if (command == "sim off" || command == "simulation off") {
-            m_simulationMode = false;
-            Serial.println("MOTOR CONTROL: SIMULATION MODE DISABLED - Motor commands will use real hardware");
-        }
-        else if (command == "status" || command == "mode") {
-            Serial.printf("MOTOR CONTROL: Current mode: %s\n", m_simulationMode ? "SIMULATION" : "REAL");
-            Serial.printf("MOTOR CONTROL: Encoder count: %ld\n", m_encoderCount);
-            Serial.printf("MOTOR CONTROL: Motor running: %s\n", m_motorRunning ? "YES" : "NO");
-            if (m_motorRunning) {
-                unsigned long elapsed = millis() - m_operationStartTime;
-                float percentComplete = (float)elapsed / (float)m_operationDuration * 100.0;
-                Serial.printf("MOTOR CONTROL: Operation progress: %.1f%% (%lu/%lu ms)\n", 
-                              percentComplete, elapsed, m_operationDuration);
-            }
-        }
-        else if (command == "help" || command == "?") {
-            Serial.println("MOTOR CONTROL: Available commands:");
-            Serial.println("  'test motor' or 'tm' - Test motor movement");
-            Serial.println("  'test encoder' or 'te' - Test encoder feedback");
-            Serial.println("  'raise' or 'r' - Raise bridge");
-            Serial.println("  'lower' or 'l' - Lower bridge");
-            Serial.println("  'halt' or 'h' - Stop motor");
-            Serial.println("  'count' or 'c' - Show encoder count");
-            Serial.println("  'reset' or '0' - Reset encoder to 0");
-            Serial.println("  'sim on' - Enable simulation mode");
-            Serial.println("  'sim off' - Disable simulation mode");
-            Serial.println("  'status' or 'mode' - Show current mode and status");
-            Serial.println("  'help' or '?' - Show this help");
-        }
-        else {
-            Serial.println("MOTOR CONTROL: Unknown command. Type 'help' for available commands.");
-        }
-    }
-}
+ 
 
 long MotorControl::getEncoderCount() {
     return m_encoderCount;
