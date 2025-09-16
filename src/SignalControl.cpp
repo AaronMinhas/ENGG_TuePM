@@ -91,6 +91,15 @@ SignalControl::SignalControl(EventBus& eventBus) : m_eventBus(eventBus) {
     Serial.println("SIGNAL_CONTROL: Initialised");
 }
 
+void SignalControl::begin() {
+    ensurePins();
+    // Default bridge state on boot: allow road traffic, hold boats.
+    Serial.println("SIGNAL_CONTROL: Applying default signal state (car=GREEN; boats=RED)");
+    driveCar(CAR, "Green");
+    driveBoat(BOAT_LEFT, "Red");
+    driveBoat(BOAT_RIGHT, "Red");
+}
+
 void SignalControl::stopTraffic() {
     // TODO: Implement actual hardware control
     // Set traffic lights to red

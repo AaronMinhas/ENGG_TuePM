@@ -17,10 +17,10 @@ namespace {
   // LED polarity: set to false if hardware is active-low (LOW = ON).
   constexpr bool ACTIVE_HIGH = true;
 
-  // GPIO pins for the local tri-LED.
-  constexpr uint8_t LED_R = 21;
-  constexpr uint8_t LED_Y = 19;
-  constexpr uint8_t LED_G = 18;
+  // GPIO pins for the local tri-LED (separate from traffic lights).
+  constexpr uint8_t LED_R = 12;
+  constexpr uint8_t LED_Y = 13;
+  constexpr uint8_t LED_G = 14;
 
   // One-time pin setup flag.
   bool pinsReady = false;

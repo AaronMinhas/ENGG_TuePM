@@ -114,7 +114,10 @@ void setup() {
     
     Serial.println("Initialising Motor Control...");
     motorControl.init();
-    
+
+    Serial.println("Initialising Signal Control outputs...");
+    signalControl.begin();
+
     Serial.println("Initialising Controller...");
     controller.begin();
     

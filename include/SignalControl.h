@@ -7,6 +7,7 @@ class SignalControl {
 public:
     SignalControl(EventBus& eventBus);
     
+    void begin();
     void stopTraffic();
     void resumeTraffic();
     void halt();
