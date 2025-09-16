@@ -72,11 +72,11 @@ void controlLogicTask(void* parameters) {
         // safetyManager.checkSystemHealth();
         
         // LED heartbeat
-        if (millis() - lastHeartbeat > 2000) {
-            ledState = !ledState;
-            digitalWrite(LED_BUILTIN, ledState);
-            lastHeartbeat = millis();
-        }
+        // if (millis() - lastHeartbeat > 2000) {
+        //     ledState = !ledState;
+        //     digitalWrite(LED_BUILTIN, ledState);
+        //     lastHeartbeat = millis();
+        // }
         
         vTaskDelay(pdMS_TO_TICKS(5));
     }
