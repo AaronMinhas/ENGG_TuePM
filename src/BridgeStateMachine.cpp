@@ -87,7 +87,13 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
         case BridgeState::IDLE:
             // IDLE state handles trigger events and success confirmations
             if (event == BridgeEvent::BOAT_DETECTED) {
-                Serial.println("STATE MACHINE: BOAT_DETECTED in IDLE - issuing STOP_TRAFFIC command");
+                // Latch the side of detection and mark cycle active
+                if (!boatCycleActive_) {
+                    boatCycleActive_ = true;
+                    Serial.printf("STATE MACHINE: BOAT_DETECTED in IDLE (side=%s) - issuing STOP_TRAFFIC command\n", sideName(activeBoatSide_));
+                } else {
+                    Serial.println("STATE MACHINE: BOAT_DETECTED ignored - cycle already active");
+                }
                 // Issue command but STAY in IDLE until success confirmation
                 issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
                 Serial.println("STATE MACHINE: Staying in IDLE, waiting for TRAFFIC_STOPPED_SUCCESS...");
@@ -121,8 +127,18 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
             if (event == BridgeEvent::BRIDGE_OPENED_SUCCESS) {
                 Serial.println("STATE MACHINE: BRIDGE_OPENED_SUCCESS received - transitioning to OPENING");
                 changeState(BridgeState::OPENING);
-                // No command issued - just waiting for boat to pass
-                Serial.println("STATE MACHINE: Now waiting for BOAT_PASSED...");
+                // Set boat lights based on detected side: detected side = Green, other = Red
+                if (activeBoatSide_ == BoatSide::LEFT) {
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "Green");
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "Red");
+                } else if (activeBoatSide_ == BoatSide::RIGHT) {
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "Green");
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "Red");
+                } else {
+                    Serial.println("STATE MACHINE: Warning - activeBoatSide unknown; leaving boat lights unchanged");
+                }
+                // Now wait for BOAT_PASSED (opposite side to clear)
+                Serial.printf("STATE MACHINE: Now waiting for BOAT_PASSED on side=%s\n", sideName(otherSide(activeBoatSide_)));
             } else {
                 Serial.println("STATE MACHINE: STOPPING_TRAFFIC state ignoring non-success event - still waiting for BRIDGE_OPENED_SUCCESS");
             }
@@ -131,11 +147,20 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
         case BridgeState::OPENING:
             // OPENING state waits ONLY for boat to pass
             if (event == BridgeEvent::BOAT_PASSED) {
-                Serial.println("STATE MACHINE: BOAT_PASSED received - transitioning to OPEN");
-                changeState(BridgeState::OPEN);
-                // Issue command to lower bridge
-                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
-                Serial.println("STATE MACHINE: Now waiting for BRIDGE_CLOSED_SUCCESS...");
+                // Validate the passing side is the opposite of detected side 
+                BoatSide expected = otherSide(activeBoatSide_);
+                if (expected == BoatSide::UNKNOWN || lastEventSide_ == BoatSide::UNKNOWN || lastEventSide_ == expected) {
+                    Serial.println("STATE MACHINE: BOAT_PASSED received (side OK) - transitioning to OPEN");
+                    changeState(BridgeState::OPEN);
+                    // Set both boat lights to RED
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "Red");
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "Red");
+                    // Issue command to lower bridge
+                    issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+                    Serial.println("STATE MACHINE: Now waiting for BRIDGE_CLOSED_SUCCESS...");
+                } else {
+                    Serial.printf("STATE MACHINE: BOAT_PASSED on unexpected side=%s (expected %s) - ignoring\n", sideName(lastEventSide_), sideName(expected));
+                }
             } else {
                 Serial.println("STATE MACHINE: OPENING state ignoring non-relevant event - still waiting for BOAT_PASSED");
             }
@@ -161,6 +186,9 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                 changeState(BridgeState::IDLE);
                 // No entry action - back to idle, ready for next boat
                 Serial.println("STATE MACHINE: Bridge operation complete - ready for next boat");
+                // Reset boat cycle tracking (allow for new detections)
+                activeBoatSide_ = BoatSide::UNKNOWN;
+                boatCycleActive_ = false;
             } else {
                 Serial.println("STATE MACHINE: CLOSING state ignoring non-success event - still waiting for TRAFFIC_RESUMED_SUCCESS");
             }
@@ -363,7 +391,23 @@ void BridgeStateMachine::onEventReceived(EventData* eventData) {
     
     // Extract the event type and forward to our existing handleEvent logic
     BridgeEvent event = eventData->getEventEnum();
+    // Try to parse side information from the event type string
+    lastEventSide_ = parseSideFromEvent(eventData, event);
+    if (event == BridgeEvent::BOAT_DETECTED && !boatCycleActive_ && lastEventSide_ != BoatSide::UNKNOWN) {
+        activeBoatSide_ = lastEventSide_;
+    }
     
     // Only log significant state changes, not every event
     handleEvent(event);
+}
+
+BridgeStateMachine::BoatSide BridgeStateMachine::parseSideFromEvent(EventData* data, BridgeEvent ev) {
+    // Suffixes in getEventType: "BOAT_DETECTED_LEFT" / "BOAT_PASSED_RIGHT"
+    const char* type = data ? data->getEventType() : "";
+    if (!type) return BoatSide::UNKNOWN;
+    String t = String(type);
+    t.toUpperCase();
+    if (t.endsWith("_LEFT")) return BoatSide::LEFT;
+    if (t.endsWith("_RIGHT")) return BoatSide::RIGHT;
+    return BoatSide::UNKNOWN;
 }

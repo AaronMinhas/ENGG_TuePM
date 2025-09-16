@@ -14,6 +14,18 @@ public:
     String getStateString() const;
 
 private:
+    // Boat passage tracking (tracks left and right boats)
+    enum class BoatSide { UNKNOWN, LEFT, RIGHT };
+    BoatSide activeBoatSide_ = BoatSide::UNKNOWN;  // Side that first detected the boat
+    BoatSide lastEventSide_ = BoatSide::UNKNOWN;   // Side parsed from the most recent boat event
+    bool boatCycleActive_ = false;                 // Set to True from first detection until traffic resumes
+
+    static const char* sideName(BoatSide s) {
+        switch (s) { case BoatSide::LEFT: return "left"; case BoatSide::RIGHT: return "right"; default: return "unknown"; }
+    }
+    static BoatSide otherSide(BoatSide s) { return s == BoatSide::LEFT ? BoatSide::RIGHT : (s == BoatSide::RIGHT ? BoatSide::LEFT : BoatSide::UNKNOWN); }
+    BoatSide parseSideFromEvent(EventData* data, BridgeEvent ev);
+
     void changeState(BridgeState newState);
     void issueCommand(CommandTarget target, CommandAction action);
     void issueCommand(CommandTarget target, CommandAction action, const String& data);
