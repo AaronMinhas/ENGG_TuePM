@@ -4,8 +4,8 @@
 
 // ------------------- Configuration -------------------
 // Pins
-static const int TRIG_PIN = 18;
-static const int ECHO_PIN = 19;
+static const int TRIG_PIN = 32;
+static const int ECHO_PIN = 33;
 
 // Distance thresholds in centimeters (short-range)
 static const float FAR_CM    = 30.0f;  // 30 cm

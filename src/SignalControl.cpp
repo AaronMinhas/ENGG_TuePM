@@ -30,14 +30,14 @@ namespace {
   // Car traffic lights: single group with Red/Yellow/Green pins.
   struct RGB { uint8_t r, y, g; };
   // Boat lights: each side has Red/Green pins.
-  struct RG  { uint8_t r, g;  };
+  struct RG  { uint8_t r, y, g;  };
 
   // Car light group 
-  RGB CAR {14, 27, 26};
+  RGB CAR {21, 19, 18};
 
   // Boat lights (R/G) per side
-  RG  BOAT_LEFT  {4, 16};
-  RG  BOAT_RIGHT {17, 5};
+  RG  BOAT_LEFT  {4, 2, 15};
+  RG  BOAT_RIGHT {5, 17, 16};
 
   // Internal flag to run one-time pin setup.
   bool pinsReady = false;
