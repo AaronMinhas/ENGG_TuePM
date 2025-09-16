@@ -288,9 +288,9 @@ void BridgeStateMachine::changeState(BridgeState newState) {
     m_stateEntryTime = millis();
     
     Serial.print("STATE MACHINE: State changed from ");
-    Serial.print((int)m_previousState);
+    Serial.print(stateName(m_previousState));
     Serial.print(" to ");
-    Serial.println((int)m_currentState);
+    Serial.println(stateName(m_currentState));
     
     // Publish state change event for monitoring systems
     auto* stateChangeData = new StateChangeData(m_currentState, m_previousState);
@@ -333,6 +333,24 @@ BridgeState BridgeStateMachine::getCurrentState() const {
 
 String BridgeStateMachine::getStateString() const {
     switch (m_currentState) {
+        case BridgeState::IDLE: return "IDLE";
+        case BridgeState::STOPPING_TRAFFIC: return "STOPPING_TRAFFIC";
+        case BridgeState::OPENING: return "OPENING";
+        case BridgeState::OPEN: return "OPEN";
+        case BridgeState::CLOSING: return "CLOSING";
+        case BridgeState::RESUMING_TRAFFIC: return "RESUMING_TRAFFIC";
+        case BridgeState::FAULT: return "FAULT";
+        case BridgeState::MANUAL_MODE: return "MANUAL_MODE";
+        case BridgeState::MANUAL_OPENING: return "MANUAL_OPENING";
+        case BridgeState::MANUAL_OPEN: return "MANUAL_OPEN";
+        case BridgeState::MANUAL_CLOSING: return "MANUAL_CLOSING";
+        case BridgeState::MANUAL_CLOSED: return "MANUAL_CLOSED";
+        default: return "UNKNOWN";
+    }
+}
+
+const char* BridgeStateMachine::stateName(BridgeState s) {
+    switch (s) {
         case BridgeState::IDLE: return "IDLE";
         case BridgeState::STOPPING_TRAFFIC: return "STOPPING_TRAFFIC";
         case BridgeState::OPENING: return "OPENING";

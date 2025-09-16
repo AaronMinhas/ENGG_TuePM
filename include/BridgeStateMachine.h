@@ -26,6 +26,9 @@ private:
     static BoatSide otherSide(BoatSide s) { return s == BoatSide::LEFT ? BoatSide::RIGHT : (s == BoatSide::RIGHT ? BoatSide::LEFT : BoatSide::UNKNOWN); }
     BoatSide parseSideFromEvent(EventData* data, BridgeEvent ev);
 
+    // Easily readable state names
+    static const char* stateName(BridgeState s);
+
     void changeState(BridgeState newState);
     void issueCommand(CommandTarget target, CommandAction action);
     void issueCommand(CommandTarget target, CommandAction action, const String& data);
