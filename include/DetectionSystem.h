@@ -1,12 +1,7 @@
 #pragma once
 
-#ifdef UNIT_TEST
-// For unit testing, Arduino header is not needed.
-#else
-    #include <Arduino.h>  // Arduino specific header if not testing
-#endif
-
-#include "EventBus.h"  // Include EventBus header
+#include <Arduino.h>
+#include "EventBus.h"
 
 class DetectionSystem {
 public:
@@ -22,25 +17,55 @@ public:
     void setSimulationMode(bool enable);
     bool isSimulationMode() const;
 
+    // Direction information
+    enum class BoatDirection {
+        NONE,
+        LEFT_TO_RIGHT,
+        RIGHT_TO_LEFT
+    };
+
     // Debug/status helpers
-    float getFilteredDistanceCm() const;  // Returns EMA-filtered distance (cm), <0 if unknown
-    int getZoneIndex() const;             // 0=far,1=near,2=close,3=none
-    const char* zoneName() const;         // Human-readable
+    float getLeftFilteredDistanceCm() const;  // Returns EMA-filtered distance (cm), <0 if unknown
+    float getRightFilteredDistanceCm() const;
+    int getLeftZoneIndex() const;             // 0=far,1=near,2=close,3=none
+    int getRightZoneIndex() const;
+    const char* getLeftZoneName() const;         // Human-readable
+    const char* getRightZoneName() const;
+    BoatDirection getCurrentDirection() const;
+    const char* getDirectionName() const;
 
 private:
     EventBus& m_eventBus;  // Reference to EventBus instance
-    bool boatDetected;     // Latched detection state (critical proximity debounced)
     bool m_simulationMode = false; // When true, suppress event publishing
-
-    // Ultrasonic sensing
-    void detectBoat();           // Main detection routine (zones + debounce)
-    float readDistanceCm();      // Measure distance in centimeters (returns <0 on timeout)
-    bool inCriticalRange(float cm) const; // Threshold check for eventing
-
-    // Internal timing/filtering
+    // Boat detection state
+    bool boatDetected = false;
+    BoatDirection boatDirection = BoatDirection::NONE;
+    
+    // Left sensor variables
+    float leftEmaDistanceCm = -1.0f;
+    int leftLastZone = -1;
+    unsigned long leftCriticalEnterMs = 0;
+    
+    // Right sensor variables
+    float rightEmaDistanceCm = -1.0f;
+    int rightLastZone = -1;
+    unsigned long rightCriticalEnterMs = 0;
+    
+    // Boat passing tracking
+    unsigned long passedCriticalEnterMs = 0;
+    unsigned long passedClearEnterMs = 0;
+    
+    // Timing
     unsigned long lastSampleMs = 0;
-    float emaDistanceCm = -1.0f;   // Exponential moving average distance
-    int lastZone = -1;             // -1 unknown, 0 far, 1 near, 2 close, 3 none
-    unsigned long criticalEnterMs = 0;
-    unsigned long clearEnterMs = 0;
+    
+    // Ultrasonic sensing methods
+    float readDistanceCm(int trigPin, int echoPin);
+    bool inCriticalRange(float cm) const;
+    int getZoneFromDistance(float distance) const;
+    void updateFilteredDistances(float leftRawDist, float rightRawDist);
+    void updateZones();
+    
+    // Detection methods
+    void checkInitialDetection();
+    void checkBoatPassed();
 };

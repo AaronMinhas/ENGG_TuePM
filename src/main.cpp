@@ -127,6 +127,7 @@ void setup() {
 
     Serial.println("Initialising Detection System (ultrasonic)...");
     detectionSystem.begin();
+    Serial.println("Detection System ready for bi-directional boat tracking");
     
     Serial.println("Starting WebSocket server...");
     wss.startServer(); 
