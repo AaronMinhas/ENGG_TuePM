@@ -22,7 +22,9 @@ private:
   void printStatus();
 
   // Streaming of ultrasonic readings (no timestamps)
-  bool streamEnabled_ = false;
+  static constexpr uint8_t STREAM_LEFT  = 0x01;
+  static constexpr uint8_t STREAM_RIGHT = 0x02;
+  uint8_t streamMask_ = 0; // bitmask tracking which ultrasonic streams are active
   unsigned long streamIntervalMs_ = 100; // default 10 Hz
   unsigned long lastStreamMs_ = 0;
   void handleStreaming();

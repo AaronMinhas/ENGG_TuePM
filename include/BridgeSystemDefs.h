@@ -58,6 +58,10 @@ inline const char* bridgeEventToString(BridgeEvent event) {
     switch (event) {
         case BridgeEvent::BOAT_DETECTED: return "BOAT_DETECTED";
         case BridgeEvent::BOAT_PASSED: return "BOAT_PASSED";
+        case BridgeEvent::BOAT_DETECTED_LEFT: return "BOAT_DETECTED_LEFT";
+        case BridgeEvent::BOAT_DETECTED_RIGHT: return "BOAT_DETECTED_RIGHT";
+        case BridgeEvent::BOAT_PASSED_LEFT: return "BOAT_PASSED_LEFT";
+        case BridgeEvent::BOAT_PASSED_RIGHT: return "BOAT_PASSED_RIGHT";
         case BridgeEvent::FAULT_DETECTED: return "FAULT_DETECTED";
         case BridgeEvent::FAULT_CLEARED: return "FAULT_CLEARED";
         case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED: return "MANUAL_OVERRIDE_ACTIVATED";

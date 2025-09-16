@@ -409,23 +409,15 @@ void BridgeStateMachine::onEventReceived(EventData* eventData) {
     
     // Extract the event type and forward to our existing handleEvent logic
     BridgeEvent event = eventData->getEventEnum();
-    // Try to parse side information from the event type string
-    lastEventSide_ = parseSideFromEvent(eventData, event);
-    if (event == BridgeEvent::BOAT_DETECTED && !boatCycleActive_ && lastEventSide_ != BoatSide::UNKNOWN) {
-        activeBoatSide_ = lastEventSide_;
+    const BoatEventSide sideInfo = eventData->getBoatEventSide();
+    if (sideInfo == BoatEventSide::LEFT || sideInfo == BoatEventSide::RIGHT) {
+        BoatSide parsedSide = (sideInfo == BoatEventSide::LEFT) ? BoatSide::LEFT : BoatSide::RIGHT;
+        lastEventSide_ = parsedSide;
+        if (event == BridgeEvent::BOAT_DETECTED && !boatCycleActive_) {
+            activeBoatSide_ = parsedSide;
+        }
     }
     
     // Only log significant state changes, not every event
     handleEvent(event);
-}
-
-BridgeStateMachine::BoatSide BridgeStateMachine::parseSideFromEvent(EventData* data, BridgeEvent ev) {
-    // Suffixes in getEventType: "BOAT_DETECTED_LEFT" / "BOAT_PASSED_RIGHT"
-    const char* type = data ? data->getEventType() : "";
-    if (!type) return BoatSide::UNKNOWN;
-    String t = String(type);
-    t.toUpperCase();
-    if (t.endsWith("_LEFT")) return BoatSide::LEFT;
-    if (t.endsWith("_RIGHT")) return BoatSide::RIGHT;
-    return BoatSide::UNKNOWN;
 }

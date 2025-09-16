@@ -100,7 +100,8 @@ void Controller::handleCommand(const Command& command) {
                 m_localStateIndicator.halt();
                 
                 Serial.println("CONTROLLER: All subsystems halted - system in safe state");
-                m_eventBus.publish(BridgeEvent::SYSTEM_SAFE_SUCCESS, nullptr);
+                auto* safeData = new SimpleEventData(BridgeEvent::SYSTEM_SAFE_SUCCESS);
+                m_eventBus.publish(BridgeEvent::SYSTEM_SAFE_SUCCESS, safeData);
             } else {
                 Serial.println("CONTROLLER: Unknown action for CONTROLLER");
             }

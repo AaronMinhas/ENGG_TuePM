@@ -48,10 +48,23 @@ void ConsoleCommands::handleCommand(const String& cmd) {
   if (cmd == "reset" || cmd == "0") { motor_.resetEncoder(); return; }
 
   // Ultrasonic/detection commands
-  // Short toggle: 'us' toggles streaming on/off; 'us state' prints status
+  // Short toggle: 'us' toggles streaming (both sensors); 'us state' prints status
   if (cmd == "us") {
-    streamEnabled_ = !streamEnabled_;
-    Serial.printf("ULTRA STREAM: %s\n", streamEnabled_ ? "enabled" : "disabled");
+    const bool enable = streamMask_ != (STREAM_LEFT | STREAM_RIGHT);
+    streamMask_ = enable ? (STREAM_LEFT | STREAM_RIGHT) : 0;
+    Serial.printf("ULTRA STREAM: %s (both sensors)\n", enable ? "enabled" : "disabled");
+    return;
+  }
+  if (cmd == "usl") {
+    const bool enable = streamMask_ != STREAM_LEFT;
+    streamMask_ = enable ? STREAM_LEFT : 0;
+    Serial.printf("ULTRA STREAM: %s (left sensor)\n", enable ? "enabled" : "disabled");
+    return;
+  }
+  if (cmd == "usr") {
+    const bool enable = streamMask_ != STREAM_RIGHT;
+    streamMask_ = enable ? STREAM_RIGHT : 0;
+    Serial.printf("ULTRA STREAM: %s (right sensor)\n", enable ? "enabled" : "disabled");
     return;
   }
   if (cmd == "us state") { printStatus(); return; }
@@ -62,9 +75,37 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     printStatus();
     return;
   }
+  
+  // Individual sensor commands for debugging
+  if (cmd == "ultra left" || cmd == "ul") {
+    detect_.update();
+    const float leftDist = detect_.getLeftFilteredDistanceCm();
+    Serial.printf("ULTRASONIC_LEFT: dist=%s cm, zone=%s, mode=%s\n",
+                  (leftDist > 0 ? String(leftDist, 1).c_str() : "unknown"),
+                  detect_.getLeftZoneName(),
+                  detect_.isSimulationMode() ? "SIM" : "REAL");
+    return;
+  }
+  if (cmd == "ultra right" || cmd == "ur2") {
+    detect_.update();
+    const float rightDist = detect_.getRightFilteredDistanceCm();
+    Serial.printf("ULTRASONIC_RIGHT: dist=%s cm, zone=%s, mode=%s\n",
+                  (rightDist > 0 ? String(rightDist, 1).c_str() : "unknown"),
+                  detect_.getRightZoneName(),
+                  detect_.isSimulationMode() ? "SIM" : "REAL");
+    return;
+  }
 
-  if (cmd == "ultra stream on") { streamEnabled_ = true; Serial.println("ULTRA STREAM: enabled"); return; }
-  if (cmd == "ultra stream off") { streamEnabled_ = false; Serial.println("ULTRA STREAM: disabled"); return; }
+  if (cmd == "ultra stream on") {
+    streamMask_ = STREAM_LEFT | STREAM_RIGHT;
+    Serial.println("ULTRA STREAM: enabled (both sensors)");
+    return;
+  }
+  if (cmd == "ultra stream off") {
+    streamMask_ = 0;
+    Serial.println("ULTRA STREAM: disabled");
+    return;
+  }
   if (cmd.startsWith("ultra stream ")) {
     String rest = cmd.substring(String("ultra stream ").length());
     rest.trim();
@@ -89,11 +130,15 @@ void ConsoleCommands::printHelp() {
   Serial.println("  sim off / simulation off  - Disable simulation (motor + ultrasonic)");
   Serial.println("  raise|r / lower|l / halt|h / stop");
   Serial.println("  test motor|tm / test encoder|te / count|c / reset|0");
-  Serial.println("  us                        - Toggle ultrasonic streaming on/off");
-  Serial.println("  us state                  - Show ultrasonic status (distance, zone, sim)");
+  Serial.println("  us                        - Toggle ultrasonic streaming for both sensors");
+  Serial.println("  usl                       - Toggle ultrasonic streaming for left sensor only");
+  Serial.println("  usr                       - Toggle ultrasonic streaming for right sensor only");
+  Serial.println("  us state                  - Show ultrasonic status (both sensors)");
   Serial.println("  ultra status              - Show ultrasonic status (same as 'us state')");
-  Serial.println("  ultra read|ur             - Take a reading tick and show status");
-  Serial.println("  ultra stream on|off       - Start/stop streaming readings (no timestamps)");
+  Serial.println("  ultra read|ur             - Take a reading tick and show both sensors");
+  Serial.println("  ultra left|ul             - Read left sensor only");
+  Serial.println("  ultra right|ur2           - Read right sensor only");
+  Serial.println("  ultra stream on|off       - Start/stop streaming readings (both sensors)");
   Serial.println("  ultra stream <ms>         - Set stream interval (e.g., 100 for 10Hz)");
   Serial.println("  status|mode               - Show combined status");
   Serial.println("  help|?                    - Show this help");
@@ -101,24 +146,44 @@ void ConsoleCommands::printHelp() {
 
 void ConsoleCommands::printStatus() {
   Serial.printf("MOTOR CONTROL: Mode: %s\n", motor_.isSimulationMode() ? "SIMULATION" : "REAL");
-  const float d = detect_.getFilteredDistanceCm();
-  Serial.printf("ULTRASONIC: Mode: %s, distance: %s, zone: %s\n",
+  
+  // Print both left and right sensor status
+  const float leftDist = detect_.getLeftFilteredDistanceCm();
+  const float rightDist = detect_.getRightFilteredDistanceCm();
+  
+  Serial.printf("ULTRASONIC_LEFT: Mode: %s, distance: %s, zone: %s\n",
                 detect_.isSimulationMode() ? "SIM" : "REAL",
-                (d > 0 ? String(d, 1).c_str() : "unknown"),
-                detect_.zoneName());
+                (leftDist > 0 ? String(leftDist, 1).c_str() : "unknown"),
+                detect_.getLeftZoneName());
+                
+  Serial.printf("ULTRASONIC_RIGHT: Mode: %s, distance: %s, zone: %s\n",
+                detect_.isSimulationMode() ? "SIM" : "REAL",
+                (rightDist > 0 ? String(rightDist, 1).c_str() : "unknown"),
+                detect_.getRightZoneName());
 }
 
 void ConsoleCommands::handleStreaming() {
   const unsigned long now = millis();
-  if (!streamEnabled_) return;
+  if (streamMask_ == 0) return;
   if (now - lastStreamMs_ < streamIntervalMs_) return;
   lastStreamMs_ = now;
 
   // Ensure sensor gets a chance to read
   detect_.update();
-  const float d = detect_.getFilteredDistanceCm();
-  Serial.printf("ULTRASONIC: dist=%s cm, zone=%s, mode=%s\n",
-                (d > 0 ? String(d, 1).c_str() : "unknown"),
-                detect_.zoneName(),
-                detect_.isSimulationMode() ? "SIM" : "REAL");
+
+  if (streamMask_ & STREAM_LEFT) {
+    const float leftDist = detect_.getLeftFilteredDistanceCm();
+    Serial.printf("ULTRASONIC_LEFT: dist=%s cm, zone=%s, mode=%s\n",
+                  (leftDist > 0 ? String(leftDist, 1).c_str() : "unknown"),
+                  detect_.getLeftZoneName(),
+                  detect_.isSimulationMode() ? "SIM" : "REAL");
+  }
+
+  if (streamMask_ & STREAM_RIGHT) {
+    const float rightDist = detect_.getRightFilteredDistanceCm();
+    Serial.printf("ULTRASONIC_RIGHT: dist=%s cm, zone=%s, mode=%s\n",
+                  (rightDist > 0 ? String(rightDist, 1).c_str() : "unknown"),
+                  detect_.getRightZoneName(),
+                  detect_.isSimulationMode() ? "SIM" : "REAL");
+  }
 }

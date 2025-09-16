@@ -106,7 +106,8 @@ void SignalControl::stopTraffic() {
 
     // Notify FSM/UI that "StoppingTraffic" step completed.
     Serial.println("SIGNAL_CONTROL: Traffic stopped successfully");
-    m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, nullptr);
+    auto* stoppedData = new SimpleEventData(BridgeEvent::TRAFFIC_STOPPED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, stoppedData);
 }
 
 void SignalControl::resumeTraffic() {
@@ -125,7 +126,8 @@ void SignalControl::resumeTraffic() {
     driveBoat(BOAT_RIGHT, "Red");
     // Publish success event
     Serial.println("SIGNAL_CONTROL: Traffic resumed successfully");
-    m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS, nullptr);
+    auto* resumedData = new SimpleEventData(BridgeEvent::TRAFFIC_RESUMED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS, resumedData);
 }
 
 void SignalControl::halt() {

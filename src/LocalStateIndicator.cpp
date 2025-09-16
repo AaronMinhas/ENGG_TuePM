@@ -114,10 +114,9 @@ void LocalStateIndicator::setState() {
     // Drive the physical LED according to policy; Red dominates if inFault==true.
     setLamp(inFault ? Colour::Red : currentColour);
     // Notify that the indicator was refreshed.
-    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, nullptr);
-    // Publish success event
+    auto* indicatorData = new SimpleEventData(BridgeEvent::INDICATOR_UPDATE_SUCCESS);
+    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, indicatorData);
     Serial.println("LOCAL_STATE_INDICATOR: State display updated successfully");
-    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, nullptr);
 }
 
 void LocalStateIndicator::halt() {

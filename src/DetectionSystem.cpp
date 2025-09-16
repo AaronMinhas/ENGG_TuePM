@@ -157,10 +157,10 @@ void DetectionSystem::updateZones()
             Serial.println("LEFT SENSOR: Object approaching (near)");
             break;
         case 2:
-            Serial.println("LEFT SENSOR: Object close");
+           Serial.println("LEFT SENSOR: Object close");
             break;
         default:
-            Serial.println("LEFT SENSOR: No object in range");
+           Serial.println("LEFT SENSOR: No object in range");
             break;
         }
     }
@@ -172,16 +172,16 @@ void DetectionSystem::updateZones()
         switch (rightZone)
         {
         case 0:
-            Serial.println("RIGHT SENSOR: Object detected (far)");
+           Serial.println("RIGHT SENSOR: Object detected (far)");
             break;
         case 1:
-            Serial.println("RIGHT SENSOR: Object approaching (near)");
+           Serial.println("RIGHT SENSOR: Object approaching (near)");
             break;
         case 2:
-            Serial.println("RIGHT SENSOR: Object close");
+           Serial.println("RIGHT SENSOR: Object close");
             break;
         default:
-            Serial.println("RIGHT SENSOR: No object in range");
+           Serial.println("RIGHT SENSOR: No object in range");
             break;
         }
     }
@@ -241,8 +241,11 @@ void DetectionSystem::checkInitialDetection()
                 // Replace this:
                 // m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL);
                 // With:
-                m_eventBus.publish(BridgeEvent::BOAT_DETECTED_LEFT, nullptr, EventPriority::NORMAL);
-                m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL); // For backward compatibility
+                auto* leftDetectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED_LEFT, BoatEventSide::LEFT);
+                m_eventBus.publish(BridgeEvent::BOAT_DETECTED_LEFT, leftDetectedData, EventPriority::NORMAL);
+
+                auto* detectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED, BoatEventSide::LEFT);
+                m_eventBus.publish(BridgeEvent::BOAT_DETECTED, detectedData, EventPriority::NORMAL); // For backward compatibility
             }
             else
             {
@@ -279,8 +282,11 @@ void DetectionSystem::checkInitialDetection()
                     // Replace this:
                     // m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL);
                     // With:
-                    m_eventBus.publish(BridgeEvent::BOAT_DETECTED_RIGHT, nullptr, EventPriority::NORMAL);
-                    m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL); // For backward compatibility
+                    auto* rightDetectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED_RIGHT, BoatEventSide::RIGHT);
+                    m_eventBus.publish(BridgeEvent::BOAT_DETECTED_RIGHT, rightDetectedData, EventPriority::NORMAL);
+
+                    auto* detectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED, BoatEventSide::RIGHT);
+                    m_eventBus.publish(BridgeEvent::BOAT_DETECTED, detectedData, EventPriority::NORMAL); // For backward compatibility
                 }
                 else
                 {
@@ -339,8 +345,11 @@ void DetectionSystem::checkBoatPassed()
                     // Replace this:
                     // m_eventBus.publish(BridgeEvent::BOAT_PASSED, nullptr, EventPriority::NORMAL);
                     // With:
-                    m_eventBus.publish(BridgeEvent::BOAT_PASSED_RIGHT, nullptr, EventPriority::NORMAL);
-                    m_eventBus.publish(BridgeEvent::BOAT_PASSED, nullptr, EventPriority::NORMAL); // For backward compatibility
+                    auto* rightPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
+                    m_eventBus.publish(BridgeEvent::BOAT_PASSED_RIGHT, rightPassedData, EventPriority::NORMAL);
+
+                    auto* passedData = new BoatEventData(BridgeEvent::BOAT_PASSED, BoatEventSide::RIGHT);
+                    m_eventBus.publish(BridgeEvent::BOAT_PASSED, passedData, EventPriority::NORMAL); // For backward compatibility
                 }
                 else
                 {
@@ -386,8 +395,11 @@ void DetectionSystem::checkBoatPassed()
                     // Replace this:
                     // m_eventBus.publish(BridgeEvent::BOAT_PASSED, nullptr, EventPriority::NORMAL);
                     // With:
-                    m_eventBus.publish(BridgeEvent::BOAT_PASSED_LEFT, nullptr, EventPriority::NORMAL);
-                    m_eventBus.publish(BridgeEvent::BOAT_PASSED, nullptr, EventPriority::NORMAL); // For backward compatibility
+                    auto* leftPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
+                    m_eventBus.publish(BridgeEvent::BOAT_PASSED_LEFT, leftPassedData, EventPriority::NORMAL);
+
+                    auto* passedData = new BoatEventData(BridgeEvent::BOAT_PASSED, BoatEventSide::LEFT);
+                    m_eventBus.publish(BridgeEvent::BOAT_PASSED, passedData, EventPriority::NORMAL); // For backward compatibility
                 }
                 else
                 {
