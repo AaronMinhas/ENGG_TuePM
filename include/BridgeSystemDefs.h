@@ -68,8 +68,7 @@ enum class CommandAction {
     // SignalControl Actions
     STOP_TRAFFIC,
     RESUME_TRAFFIC,
-    SET_CAR_LIGHT_LEFT,
-    SET_CAR_LIGHT_RIGHT,
+    SET_CAR_TRAFFIC,  // Set both car lights to same value
     SET_BOAT_LIGHT_LEFT,
     SET_BOAT_LIGHT_RIGHT,
 

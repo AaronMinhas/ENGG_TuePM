@@ -29,11 +29,12 @@ export const setBridgeState = (state: "Open" | "Closed") =>
     state,
   });
 
-export const setCarTrafficState = (side: "left" | "right", value: "Red" | "Yellow" | "Green") =>
-  getESPClient().request<CarTrafficStatus, { side: "left" | "right"; value: "Red" | "Yellow" | "Green" }>(
+// Car traffic control
+export const setCarTrafficState = (value: "Red" | "Yellow" | "Green") =>
+  getESPClient().request<CarTrafficStatus, { value: "Red" | "Yellow" | "Green" }>(
     "SET",
-    "/traffic/car/light",
-    { side, value }
+    "/traffic/car",
+    { value }
   );
 
 export const setBoatTrafficState = (side: "left" | "right", value: "Red" | "Green") =>

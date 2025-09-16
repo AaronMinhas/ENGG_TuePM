@@ -54,17 +54,11 @@ void Controller::handleCommand(const Command& command) {
                 case CommandAction::RESUME_TRAFFIC:
                     m_signalControl.resumeTraffic();
                     break;
-                case CommandAction::SET_CAR_LIGHT_LEFT:
-                    Serial.print("CONTROLLER: Calling SignalControl::setCarLight(left, ");
+                case CommandAction::SET_CAR_TRAFFIC:
+                    Serial.print("CONTROLLER: Calling SignalControl::setCarTraffic(");
                     Serial.print(command.data);
                     Serial.println(")");
-                    m_signalControl.setCarLight("left", command.data);
-                    break;
-                case CommandAction::SET_CAR_LIGHT_RIGHT:
-                    Serial.print("CONTROLLER: Calling SignalControl::setCarLight(right, ");
-                    Serial.print(command.data);
-                    Serial.println(")");
-                    m_signalControl.setCarLight("right", command.data);
+                    m_signalControl.setCarTraffic(command.data);
                     break;
                 case CommandAction::SET_BOAT_LIGHT_LEFT:
                     Serial.print("CONTROLLER: Calling SignalControl::setBoatLight(left, ");
