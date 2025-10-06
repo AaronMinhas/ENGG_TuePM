@@ -186,19 +186,19 @@ function App() {
     });
   };
 
-  const handleCarTraffic = async (side: "left" | "right", value: CarTrafficState) => {
+  const handleCarTraffic = async (value: CarTrafficState) => {
     setPacketsSent((prev) => prev + 1);
     setLastSentAt(Date.now());
-    logActivity("sent", `Change ${side} car traffic light to: ${value}`);
+    logActivity("sent", `Change car traffic lights to: ${value}`);
 
-    const data = await setCarTrafficState(side, value);
+    const data = await setCarTrafficState(value);
     setPacketsReceived((prev) => prev + 1);
     setLastReceivedAt(Date.now());
     setCarTrafficStatus(() => ({
       left: { ...data.left, receivedAt: Date.now() },
       right: { ...data.right, receivedAt: Date.now() },
     }));
-    logActivity("received", `Car traffic ${side} state: ${value}`);
+    logActivity("received", `Car traffic lights set to: ${value}`);
   };
 
   const handleBoatTraffic = async (side: "left" | "right", value: BoatTrafficState) => {
@@ -217,7 +217,7 @@ function App() {
   };
 
   useEffect(() => {
-    const client = getESPClient(IP.JOSH_1);
+    const client = getESPClient(IP.AARON_4);
     client.onStatus(setWsStatus);
 
     // Real-time Activity from snapshot events
@@ -347,15 +347,15 @@ function App() {
             status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
           />
           <DashCard
-            title="Left Car Traffic"
+            title="Car Traffic"
             variant="STATE"
             iconT={Icon.CAR}
             options={[
-              { id: "d-lc-r", label: "Red", action: () => handleCarTraffic("left", "Red") },
-              { id: "d-lc-y", label: "Yellow", action: () => handleCarTraffic("left", "Yellow") },
-              { id: "d-lc-g", label: "Green", action: () => handleCarTraffic("left", "Green") },
+              { id: "d-c-r", label: "Red", action: () => handleCarTraffic("Red") },
+              { id: "d-c-y", label: "Yellow", action: () => handleCarTraffic("Yellow") },
+              { id: "d-c-g", label: "Green", action: () => handleCarTraffic("Green") },
             ]}
-            description={carTrafficStatus?.left.value || ""}
+            description={`L:${carTrafficStatus?.left.value || "?"} R:${carTrafficStatus?.right.value || "?"}`}
             updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
             status={
               carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
@@ -389,21 +389,6 @@ function App() {
             status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
           />
 
-          <DashCard
-            title="Right Car Traffic"
-            variant="STATE"
-            iconT={Icon.CAR}
-            options={[
-              { id: "d-rc-r", label: "Red", action: () => handleCarTraffic("right", "Red") },
-              { id: "d-rc-y", label: "Yellow", action: () => handleCarTraffic("right", "Yellow") },
-              { id: "d-rc-g", label: "Green", action: () => handleCarTraffic("right", "Green") },
-            ]}
-            description={carTrafficStatus?.right.value || ""}
-            updatedAt={carTrafficStatus?.right.receivedAt ? timeAgo(carTrafficStatus?.right.receivedAt) : ""}
-            status={
-              carTrafficStatus?.right.value ? { kind: "car", value: carTrafficStatus.right.value } : undefined
-            }
-          />
           <DashCard
             title="Right Boat Traffic"
             variant="STATE"
@@ -467,15 +452,15 @@ function App() {
           />
 
           <DashCard
-            title="Left Car Traffic"
+            title="Car Traffic"
             variant="STATE"
             iconT={Icon.CAR}
             options={[
-              { id: "m-lc-r", label: "Red", action: () => handleCarTraffic("left", "Red") },
-              { id: "m-lc-y", label: "Yellow", action: () => handleCarTraffic("left", "Yellow") },
-              { id: "m-lc-g", label: "Green", action: () => handleCarTraffic("left", "Green") },
+              { id: "m-c-r", label: "Red", action: () => handleCarTraffic("Red") },
+              { id: "m-c-y", label: "Yellow", action: () => handleCarTraffic("Yellow") },
+              { id: "m-c-g", label: "Green", action: () => handleCarTraffic("Green") },
             ]}
-            description={carTrafficStatus?.left.value || ""}
+            description={`L:${carTrafficStatus?.left.value || "?"} R:${carTrafficStatus?.right.value || "?"}`}
             updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
             status={
               carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
@@ -495,21 +480,6 @@ function App() {
               boatTrafficStatus?.left.value
                 ? { kind: "boat", value: boatTrafficStatus.left.value }
                 : undefined
-            }
-          />
-          <DashCard
-            title="Right Car Traffic"
-            variant="STATE"
-            iconT={Icon.CAR}
-            options={[
-              { id: "m-rc-r", label: "Red", action: () => handleCarTraffic("right", "Red") },
-              { id: "m-rc-y", label: "Yellow", action: () => handleCarTraffic("right", "Yellow") },
-              { id: "m-rc-g", label: "Green", action: () => handleCarTraffic("right", "Green") },
-            ]}
-            description={carTrafficStatus?.right.value || ""}
-            updatedAt={carTrafficStatus?.right.receivedAt ? timeAgo(carTrafficStatus?.right.receivedAt) : ""}
-            status={
-              carTrafficStatus?.right.value ? { kind: "car", value: carTrafficStatus.right.value } : undefined
             }
           />
           <DashCard

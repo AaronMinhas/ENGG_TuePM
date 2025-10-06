@@ -36,18 +36,7 @@ BridgeEvent EventData::getEventEnum() const {
 
 // SimpleEventData
 const char* SimpleEventData::getEventType() const {
-    // Return the event type name based on the stored enum
-    switch (eventType_) {
-        case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED: return "MANUAL_BRIDGE_OPEN_REQUESTED";
-        case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED: return "MANUAL_BRIDGE_CLOSE_REQUESTED";
-        case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED: return "MANUAL_TRAFFIC_STOP_REQUESTED";
-        case BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED: return "MANUAL_TRAFFIC_RESUME_REQUESTED";
-        case BridgeEvent::BOAT_DETECTED: return "BOAT_DETECTED";
-        case BridgeEvent::BOAT_PASSED: return "BOAT_PASSED";
-        case BridgeEvent::FAULT_DETECTED: return "FAULT_DETECTED";
-        case BridgeEvent::FAULT_CLEARED: return "FAULT_CLEARED";
-        default: return "UNKNOWN_EVENT";
-    }
+    return bridgeEventToString(eventType_);
 }
 
 // EventBus implementation
@@ -142,7 +131,7 @@ void EventBus::processEvents() {
         if (subIt != subscribers.end()) {
             // Only log events that have actual impact (non-debug events)
             if ((int)event.eventType < 16) { // Log important events only
-                Serial.printf("EVENT: Type %d → %d subscribers\n", (int)event.eventType, subIt->second.size());
+                Serial.printf("EVENT: %s → %d subscribers\n", bridgeEventToString(event.eventType), subIt->second.size());
             }
             
             for (const auto& subscription : subIt->second) {

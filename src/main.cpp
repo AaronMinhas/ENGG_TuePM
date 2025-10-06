@@ -10,6 +10,8 @@
 #include "LocalStateIndicator.h"
 #include "WebSocketServer.h"
 #include "StateWriter.h"
+#include "DetectionSystem.h"
+#include "ConsoleCommands.h"
 #include "credentials.h"
 
 #define LED_BUILTIN 2
@@ -32,6 +34,12 @@ BridgeStateMachine stateMachine(systemEventBus, systemCommandBus);
 StateWriter stateWriter(systemEventBus);
 WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus);
 
+// Sensors
+DetectionSystem detectionSystem(systemEventBus);
+
+// Console router
+ConsoleCommands console(motorControl, detectionSystem);
+
 // Task handles for FreeRTOS
 TaskHandle_t controlLogicTaskHandle = NULL;
 TaskHandle_t networkTaskHandle = NULL;
@@ -51,21 +59,24 @@ void controlLogicTask(void* parameters) {
     while (true) {
         systemEventBus.processEvents();
         
-        // Check for motor test commands via serial
-        motorControl.checkSerialCommands();
+        // Check console commands
+        console.poll();
         
-        // TODO: Monitor sensors
-        // detectionSystem.checkSensors();
+        // Check motor operation progress (non-blocking)
+        motorControl.checkProgress();
+        
+        // Monitor sensors (ultrasonic distance → events)
+        detectionSystem.update();
         
         // TODO: Monitor system health  
         // safetyManager.checkSystemHealth();
         
         // LED heartbeat
-        if (millis() - lastHeartbeat > 2000) {
-            ledState = !ledState;
-            digitalWrite(LED_BUILTIN, ledState);
-            lastHeartbeat = millis();
-        }
+        // if (millis() - lastHeartbeat > 2000) {
+        //     ledState = !ledState;
+        //     digitalWrite(LED_BUILTIN, ledState);
+        //     lastHeartbeat = millis();
+        // }
         
         vTaskDelay(pdMS_TO_TICKS(5));
     }
@@ -103,7 +114,10 @@ void setup() {
     
     Serial.println("Initialising Motor Control...");
     motorControl.init();
-    
+
+    Serial.println("Initialising Signal Control outputs...");
+    signalControl.begin();
+
     Serial.println("Initialising Controller...");
     controller.begin();
     
@@ -113,9 +127,16 @@ void setup() {
 
     Serial.println("Beginning state writer subscriptions...");
     stateWriter.beginSubscriptions();
+
+    Serial.println("Initialising Detection System (ultrasonic)...");
+    detectionSystem.begin();
+    Serial.println("Detection System ready for bi-directional boat tracking");
     
     Serial.println("Starting WebSocket server...");
     wss.startServer(); 
+    
+    // Initialise console after Serial is ready
+    console.begin();
     
     Serial.println("=== Bridge Control System Ready ===");
     Serial.println("State Machine: " + stateMachine.getStateString());

@@ -27,17 +27,17 @@ namespace {
   // Set to false if your LEDs are active-low (i.e., LOW = ON).
   constexpr bool ACTIVE_HIGH = true;
 
-  // Car traffic lights: each side has Red/Yellow/Green pins.
+  // Car traffic lights: single group with Red/Yellow/Green pins.
   struct RGB { uint8_t r, y, g; };
   // Boat lights: each side has Red/Green pins.
-  struct RG  { uint8_t r, g;  };
+  struct RG  { uint8_t r, y, g;  };
 
-  RGB CAR_LEFT  {14, 27, 26};
-  RGB CAR_RIGHT {25, 33, 32};
+  // Car light group 
+  RGB CAR {21, 19, 18};
 
   // Boat lights (R/G) per side
-  RG  BOAT_LEFT  {4, 16};
-  RG  BOAT_RIGHT {17, 5};
+  RG  BOAT_LEFT  {4, 2, 15};
+  RG  BOAT_RIGHT {5, 17, 16};
 
   // Internal flag to run one-time pin setup.
   bool pinsReady = false;
@@ -55,9 +55,8 @@ namespace {
   // Ensure all pins are initialized once before use.
   void ensurePins() {
     if (pinsReady) return;
-    // Car
-    prep(CAR_LEFT.r);  prep(CAR_LEFT.y);  prep(CAR_LEFT.g);
-    prep(CAR_RIGHT.r); prep(CAR_RIGHT.y); prep(CAR_RIGHT.g);
+    // Car (single group)
+    prep(CAR.r);  prep(CAR.y);  prep(CAR.g);
     // Boat
     prep(BOAT_LEFT.r);  prep(BOAT_LEFT.g);
     prep(BOAT_RIGHT.r); prep(BOAT_RIGHT.g);
@@ -82,8 +81,7 @@ namespace {
 
   // Safe default for the whole system: everything to RED.
   void allSafeRed() {
-    driveCar(CAR_LEFT,  "Red");
-    driveCar(CAR_RIGHT, "Red");
+    driveCar(CAR,  "Red");
     driveBoat(BOAT_LEFT,  "Red");
     driveBoat(BOAT_RIGHT, "Red");
   }
@@ -93,6 +91,15 @@ SignalControl::SignalControl(EventBus& eventBus) : m_eventBus(eventBus) {
     Serial.println("SIGNAL_CONTROL: Initialised");
 }
 
+void SignalControl::begin() {
+    ensurePins();
+    // Default bridge state on boot: allow road traffic, hold boats.
+    Serial.println("SIGNAL_CONTROL: Applying default signal state (car=GREEN; boats=RED)");
+    driveCar(CAR, "Green");
+    driveBoat(BOAT_LEFT, "Red");
+    driveBoat(BOAT_RIGHT, "Red");
+}
+
 void SignalControl::stopTraffic() {
     // TODO: Implement actual hardware control
     // Set traffic lights to red
@@ -100,16 +107,16 @@ void SignalControl::stopTraffic() {
     
     // High-level action: stop road traffic (car lights RED), keep boats RED (bridge closed).
     ensurePins();
-    Serial.println("SIGNAL_CONTROL: Stopping traffic - car L/R=RED; boats=RED");
-    driveCar(CAR_LEFT,  "Red");
-    driveCar(CAR_RIGHT, "Red");
+    Serial.println("SIGNAL_CONTROL: Stopping traffic - car=RED; boats=RED");
+    driveCar(CAR,  "Red");
     driveBoat(BOAT_LEFT,  "Red");
     driveBoat(BOAT_RIGHT, "Red");
     // Publish success event
 
     // Notify FSM/UI that "StoppingTraffic" step completed.
     Serial.println("SIGNAL_CONTROL: Traffic stopped successfully");
-    m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, nullptr);
+    auto* stoppedData = new SimpleEventData(BridgeEvent::TRAFFIC_STOPPED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, stoppedData);
 }
 
 void SignalControl::resumeTraffic() {
@@ -122,14 +129,14 @@ void SignalControl::resumeTraffic() {
     // High-level action: resume road traffic (car lights GREEN).
     // Typically keep boats RED when bridge is closed.
     ensurePins();
-    Serial.println("SIGNAL_CONTROL: Resuming traffic - car L/R=GREEN; boats=RED");
-    driveCar(CAR_LEFT,  "Green");
-    driveCar(CAR_RIGHT, "Green");
+    Serial.println("SIGNAL_CONTROL: Resuming traffic - car=GREEN; boats=RED");
+    driveCar(CAR,  "Green");
     driveBoat(BOAT_LEFT,  "Red");
     driveBoat(BOAT_RIGHT, "Red");
     // Publish success event
     Serial.println("SIGNAL_CONTROL: Traffic resumed successfully");
-    m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS, nullptr);
+    auto* resumedData = new SimpleEventData(BridgeEvent::TRAFFIC_RESUMED_SUCCESS);
+    m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS, resumedData);
 }
 
 void SignalControl::halt() {
@@ -143,22 +150,19 @@ void SignalControl::halt() {
     Serial.println("SIGNAL_CONTROL: All signals set to safe state");
 }
 
-void SignalControl::setCarLight(const String& side, const String& color) {
-    // TODO: Implement actual hardware control
-    // Control the specific car traffic light
-
-    // Low-level command: set a specific car side ("left"/"right") to Red/Yellow/Green.
+void SignalControl::setCarTraffic(const String& color) {
+    // Set both car lights to the same colour
     ensurePins();
-    Serial.printf("SIGNAL_CONTROL: setCarLight(%s, %s)\n", side.c_str(), color.c_str());
-    // Apply per side (case-insensitive); invalid side is ignored (nothing driven).
-    if (lower(side)=="left")  driveCar(CAR_LEFT,  color);
-    if (lower(side)=="right") driveCar(CAR_RIGHT, color);
-    // For now, just log the change
-    Serial.println("SIGNAL_CONTROL: Car light updated successfully");
+    Serial.printf("SIGNAL_CONTROL: setCarTraffic(%s) - setting car group\n", color.c_str());
     
-    // Publish success event with light change data
-    auto* lightData = new LightChangeData(side, color, true);  // true = car light
-    m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, lightData);
+    // Apply to single (mirrored) car light group
+    driveCar(CAR,  color);
+    
+    Serial.println("SIGNAL_CONTROL: Car traffic updated successfully");
+    
+    // Publish single success event for car traffic (not separate left/right)
+    auto* carTrafficData = new LightChangeData("both", color, true);
+    m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, carTrafficData);
 }
 
 void SignalControl::setBoatLight(const String& side, const String& color) {

@@ -2,6 +2,9 @@ export enum IP {
   JOSH_1 = "ws://192.168.0.173/ws",
   AARON_1 = "ws://192.168.1.247/ws",
   JOSH_2 = "ws://172.20.10.7/ws",
+  AARON_2 = "ws://172.20.10.13/ws",
+  AARON_3 = "ws://172.20.10.2/ws",
+  AARON_4 = "ws://192.168.1.246/ws",
 }
 
 export type ActivityEntry = {

@@ -54,17 +54,11 @@ void Controller::handleCommand(const Command& command) {
                 case CommandAction::RESUME_TRAFFIC:
                     m_signalControl.resumeTraffic();
                     break;
-                case CommandAction::SET_CAR_LIGHT_LEFT:
-                    Serial.print("CONTROLLER: Calling SignalControl::setCarLight(left, ");
+                case CommandAction::SET_CAR_TRAFFIC:
+                    Serial.print("CONTROLLER: Calling SignalControl::setCarTraffic(");
                     Serial.print(command.data);
                     Serial.println(")");
-                    m_signalControl.setCarLight("left", command.data);
-                    break;
-                case CommandAction::SET_CAR_LIGHT_RIGHT:
-                    Serial.print("CONTROLLER: Calling SignalControl::setCarLight(right, ");
-                    Serial.print(command.data);
-                    Serial.println(")");
-                    m_signalControl.setCarLight("right", command.data);
+                    m_signalControl.setCarTraffic(command.data);
                     break;
                 case CommandAction::SET_BOAT_LIGHT_LEFT:
                     Serial.print("CONTROLLER: Calling SignalControl::setBoatLight(left, ");
@@ -106,7 +100,8 @@ void Controller::handleCommand(const Command& command) {
                 m_localStateIndicator.halt();
                 
                 Serial.println("CONTROLLER: All subsystems halted - system in safe state");
-                m_eventBus.publish(BridgeEvent::SYSTEM_SAFE_SUCCESS, nullptr);
+                auto* safeData = new SimpleEventData(BridgeEvent::SYSTEM_SAFE_SUCCESS);
+                m_eventBus.publish(BridgeEvent::SYSTEM_SAFE_SUCCESS, safeData);
             } else {
                 Serial.println("CONTROLLER: Unknown action for CONTROLLER");
             }

@@ -17,10 +17,10 @@ namespace {
   // LED polarity: set to false if hardware is active-low (LOW = ON).
   constexpr bool ACTIVE_HIGH = true;
 
-  // GPIO pins for the local tri-LED.
-  constexpr uint8_t LED_R = 21;
-  constexpr uint8_t LED_Y = 19;
-  constexpr uint8_t LED_G = 18;
+  // GPIO pins for the local tri-LED (separate from traffic lights).
+  constexpr uint8_t LED_R = 12;
+  constexpr uint8_t LED_Y = 13;
+  constexpr uint8_t LED_G = 14;
 
   // One-time pin setup flag.
   bool pinsReady = false;
@@ -114,10 +114,9 @@ void LocalStateIndicator::setState() {
     // Drive the physical LED according to policy; Red dominates if inFault==true.
     setLamp(inFault ? Colour::Red : currentColour);
     // Notify that the indicator was refreshed.
-    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, nullptr);
-    // Publish success event
+    auto* indicatorData = new SimpleEventData(BridgeEvent::INDICATOR_UPDATE_SUCCESS);
+    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, indicatorData);
     Serial.println("LOCAL_STATE_INDICATOR: State display updated successfully");
-    m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, nullptr);
 }
 
 void LocalStateIndicator::halt() {

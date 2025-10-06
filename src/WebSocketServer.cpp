@@ -173,7 +173,6 @@ void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, 
  * by the frontend. Currently, we have these endpoints:
  * 
  *      /bridge/state
- *      /traffic/car/light
  *      /traffic/boat/light
  *
  * The information received by these endpoints will then attempt to apply this to the BridgeStateMachine.
@@ -206,39 +205,27 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
             fillBridgeStatus(current);
         });
 
-    } else if (path == "/traffic/car/light") {
+    } else if (path == "/traffic/car") {
         auto payloadObj = payload.as<JsonObject>();
-        const char* side = payloadObj["side"];
         const char* value = payloadObj["value"];
-        if (!side || !value) { sendError(client, id, path, "Missing 'side' or 'value'"); return; }
+        if (!value) { sendError(client, id, path, "Missing 'value'"); return; }
 
-        String sd = String(side), v = String(value);
-        if (sd != "left" && sd != "right") { sendError(client, id, path, "Invalid side"); return; }
+        String v = String(value);
         if (v != "Red" && v != "Yellow" && v != "Green") { sendError(client, id, path, "Invalid value"); return; }
 
-        // Send specific car light command via CommandBus
-        CommandAction action;
-        if (sd == "left") {
-            action = CommandAction::SET_CAR_LIGHT_LEFT;
-        } else {
-            action = CommandAction::SET_CAR_LIGHT_RIGHT;
-        }
-        
+        // Send car traffic command via CommandBus
         Command cmd;
         cmd.target = CommandTarget::SIGNAL_CONTROL;
-        cmd.action = action;
+        cmd.action = CommandAction::SET_CAR_TRAFFIC;
         cmd.data = v;  // Pass the colour (Red/Yellow/Green)
         
-        Serial.print("WebSocket: Publishing car light command - Side: ");
-        Serial.print(sd);
-        Serial.print(", Value: ");
+        Serial.print("WebSocket: Publishing car traffic command - Value: ");
         Serial.println(v);
         
         commandBus_.publish(cmd);
 
         // Acknowledge request and include current snapshot
-        sendOk(client, id, path, [this, sd, v](JsonObject p){
-            p["requestedSide"] = sd;
+        sendOk(client, id, path, [this, v](JsonObject p){
             p["requestedValue"] = v;
             JsonObject current = p.createNestedObject("current");
             fillCarTrafficStatus(current);

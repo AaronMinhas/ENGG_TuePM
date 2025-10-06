@@ -178,13 +178,15 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             pushLog("Event: MANUAL_OVERRIDE_DEACTIVATED");
             break;
         case BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS:
-            // Handle individual car light changes
+            // Handle car light changes; support combined updates via side="both"
             if (data && data->getEventEnum() == BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS) {
                 auto* lightData = static_cast<LightChangeData*>(data);
                 if (lightData->getSide() == "left") {
                     carLeft_ = lightData->getColor();
                 } else if (lightData->getSide() == "right") {
                     carRight_ = lightData->getColor();
+                } else if (lightData->getSide() == "both") {
+                    carLeft_ = carRight_ = lightData->getColor();
                 }
                 pushLog("Success: CAR_LIGHT_CHANGED (" + lightData->getSide() + "=" + lightData->getColor() + ")");
             }
@@ -209,9 +211,8 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
 
 void StateWriter::pushLog(const String& line) {
     if (log_.size() >= LOG_CAP_) log_.erase(log_.begin());
-    char ts[32];
-    snprintf(ts, sizeof(ts), "%lu", (unsigned long)millis());
-    log_.push_back(String("[") + ts + "] " + line);
+    // Remove timestamp prefix for cleaner UI logs
+    log_.push_back(line);
 }
 
 const char* StateWriter::eventName(BridgeEvent ev) {

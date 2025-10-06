@@ -17,6 +17,12 @@
 // Forward declaration
 class EventData;
 
+enum class BoatEventSide {
+    UNKNOWN,
+    LEFT,
+    RIGHT
+};
+
 /**
  * Priority levels for events
  * EMERGENCY events are processed before any NORMAL events
@@ -44,6 +50,9 @@ public:
     // Returns the enum value representing this event
     // Used for event type identification and routing
     virtual BridgeEvent getEventEnum() const;
+
+    // Helper so callers can check if this payload carries boat side info
+    virtual BoatEventSide getBoatEventSide() const { return BoatEventSide::UNKNOWN; }
 };
 
 /**
@@ -106,6 +115,20 @@ public:
     const String& getSide() const { return side_; }
     const String& getColor() const { return color_; }
     bool isCarLight() const { return isCarLight_; }
+};
+
+class BoatEventData : public EventData {
+private:
+    BridgeEvent eventType_;
+    BoatEventSide side_;
+
+public:
+    BoatEventData(BridgeEvent eventType, BoatEventSide side)
+        : eventType_(eventType), side_(side) {}
+
+    const char* getEventType() const override { return bridgeEventToString(eventType_); }
+    BridgeEvent getEventEnum() const override { return eventType_; }
+    BoatEventSide getBoatEventSide() const override { return side_; }
 };
 
 /**
