@@ -1,6 +1,7 @@
 #include "LocalStateIndicator.h"
 #include "BridgeSystemDefs.h"
 #include <Arduino.h>
+#include "Logger.h"
 
 /*
   Module: LocalStateIndicator
@@ -58,7 +59,7 @@ namespace {
 
 
 LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventBus) {
-    Serial.println("LOCAL_STATE_INDICATOR: Initialised");
+    LOG_INFO(Logger::TAG_LOC, "Initialised");
     using E = BridgeEvent;
     // Unified callback for all subscribed events; adjusts local flags/colour policy and refreshes LED.
     auto cb = [this](EventData* d){
@@ -105,7 +106,7 @@ LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventB
 
 
 void LocalStateIndicator::setState() {
-    Serial.println("LOCAL_STATE_INDICATOR: Updating state display");
+    LOG_DEBUG(Logger::TAG_LOC, "Updating state display");
     
     // TODO: Implement actual hardware control
     // Update LED status indicators, displays, etc.
@@ -116,11 +117,11 @@ void LocalStateIndicator::setState() {
     // Notify that the indicator was refreshed.
     auto* indicatorData = new SimpleEventData(BridgeEvent::INDICATOR_UPDATE_SUCCESS);
     m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, indicatorData);
-    Serial.println("LOCAL_STATE_INDICATOR: State display updated successfully");
+    LOG_DEBUG(Logger::TAG_LOC, "State display updated successfully");
 }
 
 void LocalStateIndicator::halt() {
-    Serial.println("LOCAL_STATE_INDICATOR: EMERGENCY HALT - setting display to FAULT state");
+    LOG_WARN(Logger::TAG_LOC, "EMERGENCY HALT - setting display to FAULT state");
     
     // TODO: Implement actual hardware control
     // Set status indicators to show fault/emergency state
@@ -129,5 +130,5 @@ void LocalStateIndicator::halt() {
     // Force local fault state and show Red immediately.
     inFault = true; currentColour = Colour::Red;
     setLamp(Colour::Red);
-    Serial.println("LOCAL_STATE_INDICATOR: Display set to fault state");
+    LOG_WARN(Logger::TAG_LOC, "Display set to fault state");
 }

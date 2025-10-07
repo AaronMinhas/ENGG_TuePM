@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "DetectionSystem.h"
+#include "Logger.h"
 
 // ------------------- Configuration -------------------
 // Left side sensor
@@ -151,16 +152,16 @@ void DetectionSystem::updateZones()
         switch (leftZone)
         {
         case 0:
-            Serial.println("LEFT SENSOR: Object detected (far)");
+            LOG_DEBUG(Logger::TAG_DS, "LEFT SENSOR: Object detected (far)");
             break;
         case 1:
-            Serial.println("LEFT SENSOR: Object approaching (near)");
+            LOG_DEBUG(Logger::TAG_DS, "LEFT SENSOR: Object approaching (near)");
             break;
         case 2:
-           Serial.println("LEFT SENSOR: Object close");
+            LOG_DEBUG(Logger::TAG_DS, "LEFT SENSOR: Object close");
             break;
         default:
-           Serial.println("LEFT SENSOR: No object in range");
+            LOG_DEBUG(Logger::TAG_DS, "LEFT SENSOR: No object in range");
             break;
         }
     }
@@ -172,16 +173,16 @@ void DetectionSystem::updateZones()
         switch (rightZone)
         {
         case 0:
-           Serial.println("RIGHT SENSOR: Object detected (far)");
+            LOG_DEBUG(Logger::TAG_DS, "RIGHT SENSOR: Object detected (far)");
             break;
         case 1:
-           Serial.println("RIGHT SENSOR: Object approaching (near)");
+            LOG_DEBUG(Logger::TAG_DS, "RIGHT SENSOR: Object approaching (near)");
             break;
         case 2:
-           Serial.println("RIGHT SENSOR: Object close");
+            LOG_DEBUG(Logger::TAG_DS, "RIGHT SENSOR: Object close");
             break;
         default:
-           Serial.println("RIGHT SENSOR: No object in range");
+            LOG_DEBUG(Logger::TAG_DS, "RIGHT SENSOR: No object in range");
             break;
         }
     }
@@ -237,7 +238,7 @@ void DetectionSystem::checkInitialDetection()
 
             if (!m_simulationMode)
             {
-                Serial.println("LEFT SENSOR: BOAT_DETECTED (debounced) - Direction: LEFT TO RIGHT");
+                LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: BOAT_DETECTED (debounced) - Direction: LEFT TO RIGHT");
                 // Replace this:
                 // m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL);
                 // With:
@@ -249,7 +250,7 @@ void DetectionSystem::checkInitialDetection()
             }
             else
             {
-                Serial.println("LEFT SENSOR: SIM MODE - detection suppressed");
+                LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: SIM MODE - detection suppressed");
             }
         }
     }
@@ -278,7 +279,7 @@ void DetectionSystem::checkInitialDetection()
 
                 if (!m_simulationMode)
                 {
-                    Serial.println("RIGHT SENSOR: BOAT_DETECTED (debounced) - Direction: RIGHT TO LEFT");
+                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: BOAT_DETECTED (debounced) - Direction: RIGHT TO LEFT");
                     // Replace this:
                     // m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL);
                     // With:
@@ -290,7 +291,7 @@ void DetectionSystem::checkInitialDetection()
                 }
                 else
                 {
-                    Serial.println("RIGHT SENSOR: SIM MODE - detection suppressed");
+                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: SIM MODE - detection suppressed");
                 }
             }
         }
@@ -319,7 +320,7 @@ void DetectionSystem::checkBoatPassed()
             if (passedCriticalEnterMs == 0)
             {
                 passedCriticalEnterMs = now;
-                Serial.println("RIGHT SENSOR: Boat passing through");
+                LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: Boat passing through");
             }
             // Reset clear timer as boat is still detected
             passedClearEnterMs = 0;
@@ -341,7 +342,7 @@ void DetectionSystem::checkBoatPassed()
 
                 if (!m_simulationMode)
                 {
-                    Serial.println("RIGHT SENSOR: BOAT_PASSED (debounced)");
+                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: BOAT_PASSED (debounced)");
                     // Replace this:
                     // m_eventBus.publish(BridgeEvent::BOAT_PASSED, nullptr, EventPriority::NORMAL);
                     // With:
@@ -353,7 +354,7 @@ void DetectionSystem::checkBoatPassed()
                 }
                 else
                 {
-                    Serial.println("RIGHT SENSOR: SIM MODE - passed event suppressed");
+                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: SIM MODE - passed event suppressed");
                 }
             }
         }
@@ -369,7 +370,7 @@ void DetectionSystem::checkBoatPassed()
             if (passedCriticalEnterMs == 0)
             {
                 passedCriticalEnterMs = now;
-                Serial.println("LEFT SENSOR: Boat passing through");
+                LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: Boat passing through");
             }
             // Reset clear timer as boat is still detected
             passedClearEnterMs = 0;
@@ -391,7 +392,7 @@ void DetectionSystem::checkBoatPassed()
 
                 if (!m_simulationMode)
                 {
-                    Serial.println("LEFT SENSOR: BOAT_PASSED (debounced)");
+                    LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: BOAT_PASSED (debounced)");
                     // Replace this:
                     // m_eventBus.publish(BridgeEvent::BOAT_PASSED, nullptr, EventPriority::NORMAL);
                     // With:
@@ -403,7 +404,7 @@ void DetectionSystem::checkBoatPassed()
                 }
                 else
                 {
-                    Serial.println("LEFT SENSOR: SIM MODE - passed event suppressed");
+                    LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: SIM MODE - passed event suppressed");
                 }
             }
         }
@@ -419,7 +420,7 @@ bool DetectionSystem::isInitialized() const
 void DetectionSystem::setSimulationMode(bool enable)
 {
     m_simulationMode = enable;
-    Serial.printf("ULTRASONIC: Simulation mode %s\n", enable ? "ENABLED" : "DISABLED");
+    LOG_INFO(Logger::TAG_DS, "ULTRASONIC: Simulation mode %s", enable ? "ENABLED" : "DISABLED");
 }
 
 bool DetectionSystem::isSimulationMode() const

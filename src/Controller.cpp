@@ -1,5 +1,6 @@
 #include "Controller.h"
 #include <Arduino.h>
+#include "Logger.h"
 
 Controller::Controller(EventBus& eventBus, CommandBus& commandBus, MotorControl& motorControl,
                        SignalControl& signalControl, LocalStateIndicator& localStateIndicator)
@@ -12,7 +13,7 @@ Controller::Controller(EventBus& eventBus, CommandBus& commandBus, MotorControl&
 
 void Controller::begin() {
     subscribeToCommands();
-    Serial.println("CONTROLLER: Initialised and subscribed to CommandBus");
+    LOG_INFO(Logger::TAG_CMD, "Initialised and subscribed to CommandBus");
 }
 
 void Controller::subscribeToCommands() {
@@ -26,7 +27,7 @@ void Controller::subscribeToCommands() {
     m_commandBus.subscribe(CommandTarget::SIGNAL_CONTROL, commandCallback);
     m_commandBus.subscribe(CommandTarget::LOCAL_STATE_INDICATOR, commandCallback);
     
-    Serial.println("CONTROLLER: Subscribed to all command targets on CommandBus");
+    LOG_INFO(Logger::TAG_CMD, "Subscribed to all command targets on CommandBus");
 }
 
 void Controller::handleCommand(const Command& command) {
@@ -41,7 +42,7 @@ void Controller::handleCommand(const Command& command) {
                     m_motorControl.lowerBridge();
                     break;
                 default:
-                    Serial.println("CONTROLLER: Unknown motor action");
+                    LOG_WARN(Logger::TAG_CMD, "Unknown motor action");
                     break;
             }
             break;
@@ -55,25 +56,19 @@ void Controller::handleCommand(const Command& command) {
                     m_signalControl.resumeTraffic();
                     break;
                 case CommandAction::SET_CAR_TRAFFIC:
-                    Serial.print("CONTROLLER: Calling SignalControl::setCarTraffic(");
-                    Serial.print(command.data);
-                    Serial.println(")");
+                    LOG_INFO(Logger::TAG_CMD, "Calling SignalControl::setCarTraffic(%s)", command.data.c_str());
                     m_signalControl.setCarTraffic(command.data);
                     break;
                 case CommandAction::SET_BOAT_LIGHT_LEFT:
-                    Serial.print("CONTROLLER: Calling SignalControl::setBoatLight(left, ");
-                    Serial.print(command.data);
-                    Serial.println(")");
+                    LOG_INFO(Logger::TAG_CMD, "Calling SignalControl::setBoatLight(left, %s)", command.data.c_str());
                     m_signalControl.setBoatLight("left", command.data);
                     break;
                 case CommandAction::SET_BOAT_LIGHT_RIGHT:
-                    Serial.print("CONTROLLER: Calling SignalControl::setBoatLight(right, ");
-                    Serial.print(command.data);
-                    Serial.println(")");
+                    LOG_INFO(Logger::TAG_CMD, "Calling SignalControl::setBoatLight(right, %s)", command.data.c_str());
                     m_signalControl.setBoatLight("right", command.data);
                     break;
                 default:
-                    Serial.println("CONTROLLER: Unknown action for SIGNAL_CONTROL");
+                    LOG_WARN(Logger::TAG_CMD, "Unknown action for SIGNAL_CONTROL");
                     break;
             }
             break;
@@ -81,35 +76,34 @@ void Controller::handleCommand(const Command& command) {
         case CommandTarget::LOCAL_STATE_INDICATOR:
             switch (command.action) {
                 case CommandAction::SET_STATE:
-                    Serial.println("CONTROLLER: Calling LocalStateIndicator::setState()");
+                    LOG_INFO(Logger::TAG_CMD, "Calling LocalStateIndicator::setState()");
                     m_localStateIndicator.setState();
                     break;
                 default:
-                    Serial.println("CONTROLLER: Unknown action for LOCAL_STATE_INDICATOR");
+                    LOG_WARN(Logger::TAG_CMD, "Unknown action for LOCAL_STATE_INDICATOR");
                     break;
             }
             break;
 
         case CommandTarget::CONTROLLER:
             if (command.action == CommandAction::ENTER_SAFE_STATE) {
-                Serial.println("CONTROLLER: ENTER_SAFE_STATE command received - halting all subsystems");
+                LOG_WARN(Logger::TAG_CMD, "ENTER_SAFE_STATE command received - halting all subsystems");
                 
                 // Halt all subsystems
                 m_motorControl.halt();
                 m_signalControl.halt();
                 m_localStateIndicator.halt();
                 
-                Serial.println("CONTROLLER: All subsystems halted - system in safe state");
+                LOG_WARN(Logger::TAG_CMD, "All subsystems halted - system in safe state");
                 auto* safeData = new SimpleEventData(BridgeEvent::SYSTEM_SAFE_SUCCESS);
                 m_eventBus.publish(BridgeEvent::SYSTEM_SAFE_SUCCESS, safeData);
             } else {
-                Serial.println("CONTROLLER: Unknown action for CONTROLLER");
+                LOG_WARN(Logger::TAG_CMD, "Unknown action for CONTROLLER");
             }
             break;
 
         default:
-            Serial.print("CONTROLLER: Unknown command target: ");
-            Serial.println((int)command.target);
+            LOG_WARN(Logger::TAG_CMD, "Unknown command target: %d", static_cast<int>(command.target));
             break;
     }
 }

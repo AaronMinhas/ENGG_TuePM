@@ -13,6 +13,7 @@
 #include "DetectionSystem.h"
 #include "ConsoleCommands.h"
 #include "credentials.h"
+#include "Logger.h"
 
 #define LED_BUILTIN 2
 
@@ -50,7 +51,7 @@ TaskHandle_t networkTaskHandle = NULL;
 
 // CONTROL LOGIC CORE TASK (High Priority - Core 1)
 void controlLogicTask(void* parameters) {
-    Serial.println("CONTROL_LOGIC_CORE: Task started on Core 1");
+    LOG_INFO(Logger::TAG_SYS, "CONTROL_LOGIC_CORE: Task started on Core 1");
     
     // Status LED heartbeat variables
     unsigned long lastHeartbeat = 0;
@@ -84,64 +85,61 @@ void controlLogicTask(void* parameters) {
 
 // NETWORK CORE TASK (Lower Priority - Core 0)  
 void networkTask(void* parameters) {
-    Serial.println("NETWORK_CORE: Task started on Core 0");
+    LOG_INFO(Logger::TAG_SYS, "NETWORK_CORE: Task started on Core 0");
     
     while (true) {
-        // Checks WiFi is still connected. Triggers the following:
-        // - WebSocket message processing ( callbacks when messages arrive)
-        // - Frontend dashboard updates (StateWriter updates via EventBus automatically) 
-        // - Status API responses (handled automatically when frontend requests data)
-        wss.checkWiFiStatus();
-        
-
-        vTaskDelay(pdMS_TO_TICKS(50));
+        // Periodically attempt WiFi connection
+        wss.networkLoop();
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("======= ESP32 Bridge Control System Starting =======");
-    Serial.print("Total heap: "); Serial.println(ESP.getHeapSize());
-    Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
-    Serial.print("Total PSRAM: "); Serial.println(ESP.getPsramSize());
-    Serial.print("Free PSRAM: "); Serial.println(ESP.getFreePsram());
+    Logger::begin(Logger::Level::DEBUG);
+    LOG_INFO(Logger::TAG_SYS, "======= ESP32 Bridge Control System Starting =======");
+    LOG_INFO(Logger::TAG_SYS, "Total heap: %u", ESP.getHeapSize());
+    LOG_INFO(Logger::TAG_SYS, "Free heap: %u", ESP.getFreeHeap());
+    LOG_INFO(Logger::TAG_SYS, "Total PSRAM: %u", ESP.getPsramSize());
+    LOG_INFO(Logger::TAG_SYS, "Free PSRAM: %u", ESP.getFreePsram());
     
     pinMode(LED_BUILTIN, OUTPUT);
     
-    Serial.println("Initialising EventBus and CommandBus..."); // Setup above
-    Serial.println("Initialising subsystems..."); // All subsystems handle initialisation internally
+    LOG_INFO(Logger::TAG_SYS, "Initialising EventBus and CommandBus...");
+    LOG_INFO(Logger::TAG_SYS, "Initialising subsystems...");
     
-    Serial.println("Initialising Motor Control...");
+    LOG_INFO(Logger::TAG_MC, "Initialising Motor Control...");
     motorControl.init();
 
-    Serial.println("Initialising Signal Control outputs...");
+    LOG_INFO(Logger::TAG_SC, "Initialising Signal Control outputs...");
     signalControl.begin();
 
-    Serial.println("Initialising Controller...");
+    LOG_INFO(Logger::TAG_CMD, "Initialising Controller...");
     controller.begin();
     
-    Serial.println("Initialising State Machine...");
+    LOG_INFO(Logger::TAG_FSM, "Initialising State Machine...");
     stateMachine.begin();
-    wss.beginWiFi(WIFI_SSID, WIFI_PASSWORD);
+    
+    LOG_INFO(Logger::TAG_WS, "Configuring network services...");
+    wss.configureWiFi(WIFI_SSID, WIFI_PASSWORD);
 
-    Serial.println("Beginning state writer subscriptions...");
+    LOG_INFO(Logger::TAG_EVT, "Beginning state writer subscriptions...");
     stateWriter.beginSubscriptions();
 
-    Serial.println("Initialising Detection System (ultrasonic)...");
+    LOG_INFO(Logger::TAG_DS, "Initialising Detection System (ultrasonic)...");
     detectionSystem.begin();
-    Serial.println("Detection System ready for bi-directional boat tracking");
-    
-    Serial.println("Starting WebSocket server...");
-    wss.startServer(); 
+    LOG_INFO(Logger::TAG_DS, "Detection System ready for bi-directional boat tracking");
+
+    LOG_INFO(Logger::TAG_WS, "Network services will start once WiFi is connected.");
     
     // Initialise console after Serial is ready
     console.begin();
     
-    Serial.println("=== Bridge Control System Ready ===");
-    Serial.println("State Machine: " + stateMachine.getStateString());
+    LOG_INFO(Logger::TAG_SYS, "=== Bridge Control System Ready ===");
+    LOG_INFO(Logger::TAG_SYS, "State Machine: %s", stateMachine.getStateString().c_str());
     
-    Serial.println("Creating Control Logic Core task (Core 1)...");
+    LOG_INFO(Logger::TAG_SYS, "Creating Control Logic Core task (Core 1)...");
     xTaskCreatePinnedToCore(
         controlLogicTask,           // Task function
         "ControlLogicTask",         // Task name
@@ -152,7 +150,7 @@ void setup() {
         CONTROL_LOGIC_CORE          // CPU core (1)
     );
     
-    Serial.println("Creating Network Core task (Core 0)...");
+    LOG_INFO(Logger::TAG_SYS, "Creating Network Core task (Core 0)...");
     xTaskCreatePinnedToCore(
         networkTask,                // Task function
         "NetworkTask",              // Task name  
@@ -164,13 +162,13 @@ void setup() {
     );
     
     if (controlLogicTaskHandle != NULL && networkTaskHandle != NULL) {
-        Serial.println("Dual core tasks created successfully.");
-        Serial.println("Control Logic Core: Sensors, State Machine, Safety");
-        Serial.println("Network Core: WebSocket, WiFi, Remote UI");
-        Serial.println("=======================================");
+        LOG_INFO(Logger::TAG_SYS, "Dual core tasks created successfully.");
+        LOG_INFO(Logger::TAG_SYS, "Control Logic Core: Sensors, State Machine, Safety");
+        LOG_INFO(Logger::TAG_SYS, "Network Core: WebSocket, WiFi, Remote UI");
+        LOG_INFO(Logger::TAG_SYS, "=======================================");
     } else {
-        Serial.println("ERROR: Failed to create dual-core tasks.");
-        Serial.println("System will not function properly.");
+        LOG_ERROR(Logger::TAG_SYS, "Failed to create dual-core tasks.");
+        LOG_ERROR(Logger::TAG_SYS, "System will not function properly.");
     }
 }
 
@@ -178,12 +176,12 @@ void loop() {
     // Monitor task health
     if (controlLogicTaskHandle != NULL) {
     } else {
-        Serial.println("WARNING: Control Logic task has stopped!");
+        LOG_WARN(Logger::TAG_SYS, "Control Logic task has stopped!");
     }
     
     if (networkTaskHandle != NULL) {
     } else {
-        Serial.println("WARNING: Network task has stopped!");
+        LOG_WARN(Logger::TAG_SYS, "Network task has stopped!");
     }
     
     delay(1000); // Check task health every second
