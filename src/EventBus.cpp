@@ -8,6 +8,7 @@ inline unsigned long millis() { return mock_millis; }
 //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #include "EventBus.h"
+#include "Logger.h"
 
 // Global instance
 EventBus eventBus;
@@ -111,7 +112,7 @@ void EventBus::unsubscribe(BridgeEvent eventType, std::function<void(EventData*)
     auto it = subscribers.find(eventType);
     if (it != subscribers.end()) {
         subscribers.erase(it);
-        Serial.println("EventBus: Removed all subscribers for event type");
+        LOG_WARN(Logger::TAG_EVT, "Removed all subscribers for event type");
     }
 }
 
@@ -131,7 +132,8 @@ void EventBus::processEvents() {
         if (subIt != subscribers.end()) {
             // Only log events that have actual impact (non-debug events)
             if ((int)event.eventType < 16) { // Log important events only
-                Serial.printf("EVENT: %s → %d subscribers\n", bridgeEventToString(event.eventType), subIt->second.size());
+                LOG_DEBUG(Logger::TAG_EVT, "EVENT: %s → %d subscribers",
+                          bridgeEventToString(event.eventType), subIt->second.size());
             }
             
             for (const auto& subscription : subIt->second) {

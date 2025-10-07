@@ -6,3 +6,5 @@
 .vscode/ipch
 include/credentials.h
 build/
+logs/
+docs/

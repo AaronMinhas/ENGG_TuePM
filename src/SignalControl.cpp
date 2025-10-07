@@ -1,6 +1,7 @@
 #include "SignalControl.h"
 #include "BridgeSystemDefs.h"
 #include <Arduino.h>
+#include "Logger.h"
 
 /*
   Module: SignalControl
@@ -88,13 +89,13 @@ namespace {
 } 
 
 SignalControl::SignalControl(EventBus& eventBus) : m_eventBus(eventBus) {
-    Serial.println("SIGNAL_CONTROL: Initialised");
+    LOG_INFO(Logger::TAG_SC, "Initialised");
 }
 
 void SignalControl::begin() {
     ensurePins();
     // Default bridge state on boot: allow road traffic, hold boats.
-    Serial.println("SIGNAL_CONTROL: Applying default signal state (car=GREEN; boats=RED)");
+    LOG_INFO(Logger::TAG_SC, "Applying default signal state (car=GREEN; boats=RED)");
     driveCar(CAR, "Green");
     driveBoat(BOAT_LEFT, "Red");
     driveBoat(BOAT_RIGHT, "Red");
@@ -107,20 +108,20 @@ void SignalControl::stopTraffic() {
     
     // High-level action: stop road traffic (car lights RED), keep boats RED (bridge closed).
     ensurePins();
-    Serial.println("SIGNAL_CONTROL: Stopping traffic - car=RED; boats=RED");
+    LOG_INFO(Logger::TAG_SC, "Stopping traffic - car=RED; boats=RED");
     driveCar(CAR,  "Red");
     driveBoat(BOAT_LEFT,  "Red");
     driveBoat(BOAT_RIGHT, "Red");
     // Publish success event
 
     // Notify FSM/UI that "StoppingTraffic" step completed.
-    Serial.println("SIGNAL_CONTROL: Traffic stopped successfully");
+    LOG_INFO(Logger::TAG_SC, "Traffic stopped successfully");
     auto* stoppedData = new SimpleEventData(BridgeEvent::TRAFFIC_STOPPED_SUCCESS);
     m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, stoppedData);
 }
 
 void SignalControl::resumeTraffic() {
-    Serial.println("SIGNAL_CONTROL: Resuming traffic - setting signals to GREEN");
+    LOG_INFO(Logger::TAG_SC, "Resuming traffic - setting signals to GREEN");
     
     // TODO:
     // Set traffic lights to green
@@ -129,12 +130,12 @@ void SignalControl::resumeTraffic() {
     // High-level action: resume road traffic (car lights GREEN).
     // Typically keep boats RED when bridge is closed.
     ensurePins();
-    Serial.println("SIGNAL_CONTROL: Resuming traffic - car=GREEN; boats=RED");
+    LOG_INFO(Logger::TAG_SC, "Resuming traffic - car=GREEN; boats=RED");
     driveCar(CAR,  "Green");
     driveBoat(BOAT_LEFT,  "Red");
     driveBoat(BOAT_RIGHT, "Red");
     // Publish success event
-    Serial.println("SIGNAL_CONTROL: Traffic resumed successfully");
+    LOG_INFO(Logger::TAG_SC, "Traffic resumed successfully");
     auto* resumedData = new SimpleEventData(BridgeEvent::TRAFFIC_RESUMED_SUCCESS);
     m_eventBus.publish(BridgeEvent::TRAFFIC_RESUMED_SUCCESS, resumedData);
 }
@@ -145,20 +146,20 @@ void SignalControl::halt() {
 
     // Emergency: force all signals into a safe state (RED for car and boat).
     ensurePins();
-    Serial.println("SIGNAL_CONTROL: EMERGENCY HALT - all signals RED");
+    LOG_WARN(Logger::TAG_SC, "EMERGENCY HALT - all signals RED");
     allSafeRed();
-    Serial.println("SIGNAL_CONTROL: All signals set to safe state");
+    LOG_WARN(Logger::TAG_SC, "All signals set to safe state");
 }
 
 void SignalControl::setCarTraffic(const String& color) {
     // Set both car lights to the same colour
     ensurePins();
-    Serial.printf("SIGNAL_CONTROL: setCarTraffic(%s) - setting car group\n", color.c_str());
+    LOG_INFO(Logger::TAG_SC, "setCarTraffic(%s) - setting car group", color.c_str());
     
     // Apply to single (mirrored) car light group
     driveCar(CAR,  color);
     
-    Serial.println("SIGNAL_CONTROL: Car traffic updated successfully");
+    LOG_INFO(Logger::TAG_SC, "Car traffic updated successfully");
     
     // Publish single success event for car traffic (not separate left/right)
     auto* carTrafficData = new LightChangeData("both", color, true);
@@ -171,11 +172,11 @@ void SignalControl::setBoatLight(const String& side, const String& color) {
 
     // Low-level command: set a specific boat side ("left"/"right") to Red/Green.
     ensurePins();
-    Serial.printf("SIGNAL_CONTROL: setBoatLight(%s, %s)\n", side.c_str(), color.c_str());
+    LOG_INFO(Logger::TAG_SC, "setBoatLight(%s, %s)", side.c_str(), color.c_str());
     if (lower(side)=="left")  driveBoat(BOAT_LEFT,  color);
     if (lower(side)=="right") driveBoat(BOAT_RIGHT, color);
     // For now, just log the change
-    Serial.println("SIGNAL_CONTROL: Boat light updated successfully");
+    LOG_INFO(Logger::TAG_SC, "Boat light updated successfully");
     
     // Publish success event with light change data
     auto* lightData = new LightChangeData(side, color, false);  // false = boat light

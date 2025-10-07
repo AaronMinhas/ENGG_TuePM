@@ -11,10 +11,8 @@ class WebSocketServer {
 public:
     WebSocketServer(uint16_t port, StateWriter& StateWriter, CommandBus& commandBus, EventBus& eventBus);
 
-    void beginWiFi(const char* ssid, const char* password);
-    void startServer();
-    void handleClients();
-    void checkWiFiStatus();
+    void configureWiFi(const char* ssid, const char* password);
+    void networkLoop();
 
 private:
     StateWriter& state_;
@@ -24,7 +22,15 @@ private:
     AsyncWebServer server;
     AsyncWebSocket ws;
     uint16_t port;
-    unsigned long lastStatusCheck;
+    bool wifiConfigured_ = false;
+    bool serverStarted_ = false;
+    bool handlersAttached_ = false;
+    bool broadcastSubscribed_ = false;
+    bool connectionInProgress_ = false;
+    unsigned long connectStartMs_ = 0;
+    unsigned long nextRetryMs_ = 0;
+    String ssid_;
+    String password_;
 
     String bridgeState = "Closed";
     bool lockEngaged = true;
@@ -54,4 +60,5 @@ private:
 
     void broadcastSnapshot();
     void setupBroadcastSubscriptions();
+    void startServer();
 };

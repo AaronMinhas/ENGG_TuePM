@@ -1,44 +1,109 @@
 #include "WebSocketServer.h"
+#include "Logger.h"
+
+namespace {
+  constexpr unsigned long CONNECT_TIMEOUT_MS = 15000;
+  constexpr unsigned long RETRY_DELAY_MS = 10000;
+}
 
 WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter, CommandBus& commandBus, EventBus& eventBus) 
-    : server(port), ws("/ws"), port(port), lastStatusCheck(0), state_(stateWriter), commandBus_(commandBus), eventBus_(eventBus) {}
+    : server(port), ws("/ws"), port(port), state_(stateWriter), commandBus_(commandBus), eventBus_(eventBus) {}
 
-void WebSocketServer::beginWiFi(const char* ssid, const char* password) {
-    Serial.print("Connecting to WiFi network: ");
-    Serial.println(ssid);
-    
-    WiFi.begin(ssid, password);
-    
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.print(".");
+void WebSocketServer::configureWiFi(const char* ssid, const char* password) {
+    ssid_ = ssid ? String(ssid) : String();
+    password_ = password ? String(password) : String();
+    wifiConfigured_ = ssid_.length() > 0;
+    if (!wifiConfigured_) {
+        LOG_INFO(Logger::TAG_WS, "WiFi configuration disabled (empty SSID)");
+        return;
     }
-    
-    Serial.println();
-    Serial.println("WiFi connected successfully!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+
+    LOG_INFO(Logger::TAG_WS, "WiFi credentials set for network '%s'", ssid_.c_str());
+
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(true);
+    connectionInProgress_ = false;
+    nextRetryMs_ = 0; // attempt immediately on next loop
 }
 
 void WebSocketServer::startServer() {
+    if (serverStarted_) return;
+
     ws.onEvent([this](AsyncWebSocket *server, AsyncWebSocketClient *client,
                       AwsEventType type, void *arg, uint8_t *data, size_t len) {
         handleWsEvent(server, client, type, arg, data, len);
     });
-    server.addHandler(&ws);
+    if (!handlersAttached_) {
+        server.addHandler(&ws);
 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "text/plain", "ESP32 WebSocket Server Running");
-    });
+        server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+            request->send(200, "text/plain", "ESP32 WebSocket Server Running");
+        });
+        handlersAttached_ = true;
+    }
 
     server.begin();
-    Serial.println("WebSocket server started successfully!");
-    Serial.print("Connect to: ws://");
-    Serial.print(WiFi.localIP());
-    Serial.println("/ws");
+    serverStarted_ = true;
+
+    LOG_INFO(Logger::TAG_WS, "WebSocket server started successfully!");
+    LOG_INFO(Logger::TAG_WS, "Connect to: ws://%s/ws", WiFi.localIP().toString().c_str());
 
     // Subscribe to state-related events and broadcast snapshot on change
-    setupBroadcastSubscriptions();
+    if (!broadcastSubscribed_) {
+        setupBroadcastSubscriptions();
+        broadcastSubscribed_ = true;
+    }
+}
+
+void WebSocketServer::networkLoop() {
+    if (!wifiConfigured_) {
+        return; // networking disabled
+    }
+
+    const unsigned long now = millis();
+    wl_status_t status = WiFi.status();
+
+    if (status == WL_CONNECTED) {
+        if (!serverStarted_) {
+            LOG_INFO(Logger::TAG_WS, "WiFi connected (IP: %s)", WiFi.localIP().toString().c_str());
+            connectionInProgress_ = false;
+            startServer();
+        }
+        return;
+    }
+
+    if (serverStarted_) {
+        LOG_WARN(Logger::TAG_WS, "WiFi lost - closing WebSocket clients");
+        ws.closeAll();
+        server.end();
+        serverStarted_ = false;
+    }
+
+    if (!connectionInProgress_) {
+        if (now >= nextRetryMs_) {
+            LOG_DEBUG(Logger::TAG_WS, "Attempting WiFi connection to %s", ssid_.c_str());
+            WiFi.begin(ssid_.c_str(), password_.c_str());
+            connectionInProgress_ = true;
+            connectStartMs_ = now;
+        }
+        return;
+    }
+
+    // connection in progress
+    if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL || status == WL_CONNECTION_LOST) {
+        LOG_WARN(Logger::TAG_WS, "WiFi connection failed - scheduling retry (status=%d)", static_cast<int>(status));
+        WiFi.disconnect(true);
+        connectionInProgress_ = false;
+        nextRetryMs_ = now + RETRY_DELAY_MS;
+        return;
+    }
+
+    if (now - connectStartMs_ > CONNECT_TIMEOUT_MS) {
+        LOG_WARN(Logger::TAG_WS, "WiFi connection timeout - retrying");
+        WiFi.disconnect(true);
+        connectionInProgress_ = false;
+        nextRetryMs_ = now + RETRY_DELAY_MS;
+    }
 }
 
 void WebSocketServer::fillBridgeStatus(JsonObject obj) {
@@ -119,7 +184,7 @@ void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, con
 
     // Only log important SET commands, not routine status requests
     if (path.startsWith("/bridge/state")) {
-        Serial.printf("[WS][TX][OK] Client %u <- %s\n", client->id(), path.c_str());
+        LOG_DEBUG(Logger::TAG_WS, "[TX][OK] Client %u <- %s", client->id(), path.c_str());
     }
 }
 
@@ -134,7 +199,7 @@ void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, 
     String out; serializeJson(doc, out);
     client->text(out);
 
-    Serial.printf("[WS][TX][ERR] Client %u <- %s error=%s\n", client->id(), path.c_str(), msg.c_str());
+    LOG_WARN(Logger::TAG_WS, "[TX][ERR] Client %u <- %s error=%s", client->id(), path.c_str(), msg.c_str());
 }
 
 /**
@@ -188,12 +253,12 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
 
         // Send manual control event via EventBus to StateMachine (Command Mode)
         if (s == "Open") {
-            Serial.println("WS: Bridge open requested");
+            LOG_INFO(Logger::TAG_WS, "Bridge open requested via WebSocket");
             // Allocate on heap as EventBus processes asynchronously
             auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED);
             eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED, eventData);
         } else {
-            Serial.println("WS: Bridge close requested");
+            LOG_INFO(Logger::TAG_WS, "Bridge close requested via WebSocket");
             auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED);
             eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED, eventData);
         }
@@ -219,8 +284,7 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         cmd.action = CommandAction::SET_CAR_TRAFFIC;
         cmd.data = v;  // Pass the colour (Red/Yellow/Green)
         
-        Serial.print("WebSocket: Publishing car traffic command - Value: ");
-        Serial.println(v);
+        LOG_INFO(Logger::TAG_WS, "Publishing car traffic command - Value: %s", v.c_str());
         
         commandBus_.publish(cmd);
 
@@ -254,10 +318,8 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         cmd.action = action;
         cmd.data = v;  // Pass the colour (Red/Green)
         
-        Serial.print("WebSocket: Publishing boat light command - Side: ");
-        Serial.print(sd);
-        Serial.print(", Value: ");
-        Serial.println(v);
+        LOG_INFO(Logger::TAG_WS, "Publishing boat light command - Side: %s, Value: %s",
+                 sd.c_str(), v.c_str());
         
         commandBus_.publish(cmd);
 
@@ -277,25 +339,25 @@ void WebSocketServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient
                                  AwsEventType type, void* arg, uint8_t* data, size_t len) {
     
     if (type == WS_EVT_CONNECT) {
-        Serial.printf("Client %u connected\n", client->id());
+        LOG_INFO(Logger::TAG_WS, "Client %u connected", client->id());
         return;
     }
     if (type == WS_EVT_DISCONNECT) {
-        Serial.printf("Client %u disconnected\n", client->id());
+        LOG_INFO(Logger::TAG_WS, "Client %u disconnected", client->id());
         return;
     }
     if (type != WS_EVT_DATA) return;
 
     AwsFrameInfo* info = (AwsFrameInfo*)arg;
     if (!(info->final && info->index == 0 && info->len == len)) {
-        Serial.println("Fragmented frame ignored");
+        LOG_DEBUG(Logger::TAG_WS, "Fragmented frame ignored");
         return;
     }
 
     StaticJsonDocument<768> doc;
     DeserializationError err = deserializeJson(doc, data, len);
     if (err) {
-        Serial.printf("JSON parse error: %s\n", err.c_str());
+        LOG_WARN(Logger::TAG_WS, "JSON parse error: %s", err.c_str());
         String id = doc["id"] | "";
         String path = doc["path"] | "";
         sendError(client, id, path.length() ? path : "/", "Invalid JSON");
@@ -321,49 +383,15 @@ void WebSocketServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient
         // Only log non routine GET requests
         if (path != "/bridge/status" && path != "/traffic/car/status" && 
             path != "/traffic/boat/status" && path != "/system/status" && path != "/system/ping") {
-            Serial.printf("[WS][RX] Client %u -> GET %s\n", client->id(), path.c_str());
+            LOG_DEBUG(Logger::TAG_WS, "[RX] Client %u -> GET %s", client->id(), path.c_str());
         }
         handleGet(client, id, path);
     }
     else if (method == "SET") {
-        Serial.printf("[WS][RX] Client %u -> SET %s\n", client->id(), path.c_str());
+        LOG_DEBUG(Logger::TAG_WS, "[RX] Client %u -> SET %s", client->id(), path.c_str());
         handleSet(client, id, path, payload);
     }
     else {
         sendError(client, id, path, "Unknown method");
-    }
-}
-
-void WebSocketServer::checkWiFiStatus() {
-    unsigned long currentTime = millis();
-    
-    if (currentTime - lastStatusCheck > 30000) {
-        lastStatusCheck = currentTime;
-        
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("WARNING: WiFi connection lost!");
-            Serial.print("Current status: ");
-            switch (WiFi.status()) {
-                case WL_IDLE_STATUS:
-                    Serial.println("Idle");
-                    break;
-                case WL_NO_SSID_AVAIL:
-                    Serial.println("Network not available");
-                    break;
-                case WL_CONNECT_FAILED:
-                    Serial.println("Connection failed");
-                    break;
-                case WL_CONNECTION_LOST:
-                    Serial.println("Connection lost");
-                    break;
-                case WL_DISCONNECTED:
-                    Serial.println("Disconnected");
-                    break;
-                default:
-                    Serial.println("Unknown");
-            }
-            Serial.println("Attempting to reconnect ->");
-            WiFi.reconnect();
-        } 
     }
 }
