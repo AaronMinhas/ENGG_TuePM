@@ -3,6 +3,7 @@
  * Refer to the dashboard design in the repository README.
  */
 
+import React from "react";
 import { type LucideIcon, Car as CarIcon, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
 import { CustomDropdown } from "./CustomDropdown";
 import { Icon as IconKey } from "../types/GenTypes";
@@ -17,7 +18,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
   const statusColour = getStatusColour(status);
 
   return (
-    <div className="w-full h-35 bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
+    <div className="w-full h-full bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
       <div className="flex justify-between items-center">
         <div className="flex gap-2">
           {Icon ? <Icon size={22} /> : null}
