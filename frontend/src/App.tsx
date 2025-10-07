@@ -29,7 +29,7 @@
  * - Need to add an indication of WIFI strength --> Using RSSI range -- closer to 0 the stronger
  */
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   getESPClient,
   getBridgeState,
@@ -328,12 +328,9 @@ function App() {
       <TopNav />
 
       <div className="flex justify-center mt-4">
-        {/* Desktop layout */}
-        <div
-          className="hidden lg:grid grid-cols-2 lg:grid-cols-4 grid-rows-[repeat(8,minmax(0,1fr))] 
-            lg:grid-rows-[repeat(4,minmax(0,1fr))] gap-4 lg:h-[calc(100dvh-670px)]
-            overflow-hidden min-h-0 max-w-[1700px] w-full mx-4"
-        >
+        {/* Desktop layout - 4x4 grid */}
+        <div className="hidden lg:grid grid-cols-4 grid-rows-4 gap-4 lg:h-[calc(100vh-300px)] max-w-[1700px] w-full mx-4">
+          {/* Row 1 */}
           <DashCard
             title="Bridge State"
             variant="STATE"
@@ -362,14 +359,14 @@ function App() {
             }
           />
           <DashCard
-            title="Left Boat Traffic"
+            title="Boat Traffic"
             variant="STATE"
             iconT={Icon.BOAT}
             options={[
-              { id: "d-lb-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
-              { id: "d-lb-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
+              { id: "d-bt-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
+              { id: "d-bt-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
             ]}
-            description={boatTrafficStatus?.left.value || ""}
+            description={`L:${boatTrafficStatus?.left.value || "?"} R:${boatTrafficStatus?.right.value || "?"}`}
             updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
             status={
               boatTrafficStatus?.left.value
@@ -377,8 +374,11 @@ function App() {
                 : undefined
             }
           />
-          <ActivitySec log={activityLog} />
+          <div className="row-span-4">
+            <ActivitySec log={activityLog} />
+          </div>
 
+          {/* Row 2 */}
           <DashCard
             title="System State"
             variant="STATE"
@@ -388,33 +388,22 @@ function App() {
             updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
             status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
           />
+          {/* Bridge card spans 2x3 (2 columns, 3 rows) */}
+          <div className="col-span-2 row-span-3">
+            <BridgeCard bridgeStatus={bridgeStatus} />
+          </div>
 
-          <DashCard
-            title="Right Boat Traffic"
-            variant="STATE"
-            iconT={Icon.BOAT}
-            options={[
-              { id: "d-rb-r", label: "Red", action: () => handleBoatTraffic("right", "Red") },
-              { id: "d-rb-g", label: "Green", action: () => handleBoatTraffic("right", "Green") },
-            ]}
-            description={boatTrafficStatus?.right.value || ""}
-            updatedAt={
-              boatTrafficStatus?.right.receivedAt ? timeAgo(boatTrafficStatus?.right.receivedAt) : ""
-            }
-            status={
-              boatTrafficStatus?.right.value
-                ? { kind: "boat", value: boatTrafficStatus.right.value }
-                : undefined
-            }
-          />
+          {/* Row 3 - Bridge card continues here */}
 
+          {/* Row 4 */}
           <DashCard
             title="Packets Sent"
             iconT={Icon.PACKETS_SEND}
             description={packetsSent.toString()}
             updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
           />
-          <BridgeCard />
+          {/* Bridge card continues here */}
+
           <DashCard
             title="Packets Received"
             iconT={Icon.PACKETS_REC}
@@ -423,12 +412,19 @@ function App() {
           />
         </div>
 
-        {/* Mobile layout grid-rows-[repeat(8, minmax(0,1fr))]*/}
-        <div className="grid lg:hidden grid-cols-2 auto-rows-auto grid-rows-[repeat(6,minmax(0,1fr))] h-[calc(100dvh - 300px)] min-h-0 w-full gap-4 mx-4 mb-4">
-          <ActivitySec log={activityLog} />
+        {/* Mobile layout - 2x8 grid */}
+        <div className="grid lg:hidden grid-cols-2 grid-rows-8 h-[calc(100dvh - 300px)] min-h-0 w-full gap-4 mx-4 mb-4">
+          {/* Activity - 2x2 (spans rows 1-2, cols 1-2) */}
+          <div className="col-span-2 row-span-2">
+            <ActivitySec log={activityLog} />
+          </div>
 
-          <BridgeCard />
+          {/* Bridge - 2x2 (spans rows 3-4, cols 1-2) */}
+          <div className="col-span-2 row-span-2">
+            <BridgeCard bridgeStatus={bridgeStatus} />
+          </div>
 
+          {/* DashCards - 1x1 each in 2x4 grid (rows 5-8) */}
           <DashCard
             title="Bridge State"
             variant="STATE"
@@ -450,7 +446,6 @@ function App() {
             updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
             status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
           />
-
           <DashCard
             title="Car Traffic"
             variant="STATE"
@@ -467,14 +462,14 @@ function App() {
             }
           />
           <DashCard
-            title="Left Boat Traffic"
+            title="Boat Traffic"
             variant="STATE"
             iconT={Icon.BOAT}
             options={[
-              { id: "m-lb-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
-              { id: "m-lb-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
+              { id: "m-bt-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
+              { id: "m-bt-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
             ]}
-            description={boatTrafficStatus?.left.value || ""}
+            description={`L:${boatTrafficStatus?.left.value || "?"} R:${boatTrafficStatus?.right.value || "?"}`}
             updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
             status={
               boatTrafficStatus?.left.value
@@ -482,25 +477,6 @@ function App() {
                 : undefined
             }
           />
-          <DashCard
-            title="Right Boat Traffic"
-            variant="STATE"
-            iconT={Icon.BOAT}
-            options={[
-              { id: "m-rb-r", label: "Red", action: () => handleBoatTraffic("right", "Red") },
-              { id: "m-rb-g", label: "Green", action: () => handleBoatTraffic("right", "Green") },
-            ]}
-            description={boatTrafficStatus?.right.value || ""}
-            updatedAt={
-              boatTrafficStatus?.right.receivedAt ? timeAgo(boatTrafficStatus?.right.receivedAt) : ""
-            }
-            status={
-              boatTrafficStatus?.right.value
-                ? { kind: "boat", value: boatTrafficStatus.right.value }
-                : undefined
-            }
-          />
-
           <DashCard
             title="Packets Sent"
             iconT={Icon.PACKETS_SEND}
