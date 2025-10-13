@@ -1,10 +1,13 @@
 #include "ConsoleCommands.h"
 #include "MotorControl.h"
 #include "DetectionSystem.h"
+#include "EventBus.h"
+#include "SignalControl.h"
+#include "BridgeSystemDefs.h"
 #include "Logger.h"
 
-ConsoleCommands::ConsoleCommands(MotorControl& motor, DetectionSystem& detect)
-  : motor_(motor), detect_(detect) {}
+ConsoleCommands::ConsoleCommands(MotorControl& motor, DetectionSystem& detect, EventBus& eventBus, SignalControl& signalControl)
+  : motor_(motor), detect_(detect), eventBus_(eventBus), signalControl_(signalControl) {}
 
 void ConsoleCommands::begin() {
   LOG_INFO(Logger::TAG_CON, "Commands ready. Type 'help' for options.");
@@ -47,6 +50,81 @@ void ConsoleCommands::handleCommand(const String& cmd) {
   if (cmd == "test encoder" || cmd == "te") { motor_.testEncoder(); return; }
   if (cmd == "count" || cmd == "c") { LOG_INFO(Logger::TAG_MC, "MOTOR CONTROL: Current encoder count: %ld", motor_.getEncoderCount()); return; }
   if (cmd == "reset" || cmd == "0") { motor_.resetEncoder(); return; }
+
+  // Fake boat event commands
+  if (cmd == "fake boat detected" || cmd == "fbd") {
+    eventBus_.publish(BridgeEvent::BOAT_DETECTED);
+    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_DETECTED published");
+    return;
+  }
+  if (cmd == "fake boat passed" || cmd == "fbp") {
+    eventBus_.publish(BridgeEvent::BOAT_PASSED);
+    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_PASSED published");
+    return;
+  }
+  if (cmd == "fake boat left" || cmd == "fbl") {
+    eventBus_.publish(BridgeEvent::BOAT_DETECTED_LEFT);
+    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_DETECTED_LEFT published");
+    return;
+  }
+  if (cmd == "fake boat right" || cmd == "fbr") {
+    eventBus_.publish(BridgeEvent::BOAT_DETECTED_RIGHT);
+    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_DETECTED_RIGHT published");
+    return;
+  }
+  if (cmd == "fake boat passed left" || cmd == "fbpl") {
+    eventBus_.publish(BridgeEvent::BOAT_PASSED_LEFT);
+    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_PASSED_LEFT published");
+    return;
+  }
+  if (cmd == "fake boat passed right" || cmd == "fbpr") {
+    eventBus_.publish(BridgeEvent::BOAT_PASSED_RIGHT);
+    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_PASSED_RIGHT published");
+    return;
+  }
+
+  // Light control commands
+  if (cmd.startsWith("car light ") || cmd.startsWith("cl ")) {
+    String color = cmd.substring(cmd.indexOf(' ') + 1);
+    color.trim();
+    color.toLowerCase();
+    if (color == "red" || color == "yellow" || color == "green") {
+      signalControl_.setCarTraffic(color);
+      LOG_INFO(Logger::TAG_CON, "LIGHT CONTROL: Car lights set to %s", color.c_str());
+    } else {
+      LOG_WARN(Logger::TAG_CON, "Invalid car light color. Use: red, yellow, green");
+    }
+    return;
+  }
+  
+  if (cmd.startsWith("boat light ") || cmd.startsWith("bl ")) {
+    String rest = cmd.substring(cmd.indexOf(' ') + 1);
+    rest.trim();
+    int spacePos = rest.indexOf(' ');
+    if (spacePos > 0) {
+      String side = rest.substring(0, spacePos);
+      String color = rest.substring(spacePos + 1);
+      side.trim();
+      color.trim();
+      side.toLowerCase();
+      color.toLowerCase();
+      
+      if ((side == "left" || side == "right") && (color == "red" || color == "green")) {
+        signalControl_.setBoatLight(side, color);
+        LOG_INFO(Logger::TAG_CON, "LIGHT CONTROL: Boat light %s set to %s", side.c_str(), color.c_str());
+      } else {
+        LOG_WARN(Logger::TAG_CON, "Invalid boat light command. Use: 'boat light <left|right> <red|green>'");
+      }
+    } else {
+      LOG_WARN(Logger::TAG_CON, "Invalid boat light command. Use: 'boat light <left|right> <red|green>'");
+    }
+    return;
+  }
+  
+  if (cmd == "lights status" || cmd == "ls") {
+    LOG_INFO(Logger::TAG_CON, "LIGHT CONTROL: Use 'status' command to see current system state");
+    return;
+  }
 
   // Ultrasonic/detection commands
   // Short toggle: 'us' toggles streaming (both sensors); 'us state' prints status
@@ -163,6 +241,15 @@ void ConsoleCommands::printHelp() {
   Serial.println("  ultra right|ur2           - Read right sensor only");
   Serial.println("  ultra stream on|off       - Start/stop streaming readings (both sensors)");
   Serial.println("  ultra stream <ms>         - Set stream interval (e.g., 100 for 10Hz)");
+  Serial.println("  fake boat detected|fbd   - Trigger fake BOAT_DETECTED event");
+  Serial.println("  fake boat passed|fbp     - Trigger fake BOAT_PASSED event");
+  Serial.println("  fake boat left|fbl       - Trigger fake BOAT_DETECTED_LEFT event");
+  Serial.println("  fake boat right|fbr      - Trigger fake BOAT_DETECTED_RIGHT event");
+  Serial.println("  fake boat passed left|fbpl  - Trigger fake BOAT_PASSED_LEFT event");
+  Serial.println("  fake boat passed right|fbpr  - Trigger fake BOAT_PASSED_RIGHT event");
+  Serial.println("  car light <colour>|cl <colour>  - Set car lights (red/yellow/green)");
+  Serial.println("  boat light <side> <colour>|bl <side> <colour>  - Set boat lights (left/right, red/green)");
+  Serial.println("  lights status|ls          - Show light control status");
   Serial.println("  log level <lvl>           - Set log level (debug/info/warn/error/none)");
   Serial.println("  status|mode               - Show combined status");
   Serial.println("  help|?                    - Show this help");
