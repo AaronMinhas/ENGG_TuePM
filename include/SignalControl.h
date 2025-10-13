@@ -17,6 +17,11 @@ public:
     void setCarTraffic(const String& color);
     void setBoatLight(const String& side, const String& color);
     
+    // Boat queue timer methods
+    void startBoatGreenPeriod(const String& side);  // Start 45s green period for boat queue
+    void endBoatGreenPeriod();                      // End green period, turn lights red
+    bool isBoatGreenPeriodActive() const;           // Check if queue timer is active
+    
 private:
     EventBus& m_eventBus;
     
@@ -43,4 +48,9 @@ private:
     StopPhase m_stopPhase;
     ResumePhase m_resumePhase;
     unsigned long m_operationStartTime;
+    
+    // Boat queue timer state
+    bool m_boatQueueActive;
+    unsigned long m_boatQueueStartTime;
+    String m_boatQueueSide;  // Which side's light is green ("left" or "right")
 };

@@ -1,6 +1,10 @@
 #pragma once
 #include <Arduino.h>
 
+// Boat Traffic Queue Timing Constants
+#define BOAT_GREEN_PERIOD_MS 45000      // 45 seconds - boats can pass during this time
+#define BOAT_PASSAGE_TIMEOUT_MS 120000  // 2 minutes - emergency timeout if no boat passes
+
 // System States
 enum class BridgeState {
     IDLE,
@@ -49,6 +53,10 @@ enum class BridgeEvent {
     CAR_LIGHT_CHANGED_SUCCESS,
     BOAT_LIGHT_CHANGED_SUCCESS,
     
+    // Boat Queue Events
+    BOAT_GREEN_PERIOD_EXPIRED,    // 45-second green period has ended
+    BOAT_PASSAGE_TIMEOUT,          // Emergency timeout - boat didn't pass
+    
     // State Change Events
     STATE_CHANGED
 };
@@ -78,6 +86,8 @@ inline const char* bridgeEventToString(BridgeEvent event) {
         case BridgeEvent::INDICATOR_UPDATE_SUCCESS: return "INDICATOR_UPDATE_SUCCESS";
         case BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS: return "CAR_LIGHT_CHANGED_SUCCESS";
         case BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS: return "BOAT_LIGHT_CHANGED_SUCCESS";
+        case BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED: return "BOAT_GREEN_PERIOD_EXPIRED";
+        case BridgeEvent::BOAT_PASSAGE_TIMEOUT: return "BOAT_PASSAGE_TIMEOUT";
         case BridgeEvent::STATE_CHANGED: return "STATE_CHANGED";
         default: return "UNKNOWN_EVENT";
     }

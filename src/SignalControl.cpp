@@ -93,7 +93,10 @@ SignalControl::SignalControl(EventBus& eventBus)
       m_currentOperation(Operation::NONE),
       m_stopPhase(StopPhase::COMPLETE),
       m_resumePhase(ResumePhase::COMPLETE),
-      m_operationStartTime(0) {
+      m_operationStartTime(0),
+      m_boatQueueActive(false),
+      m_boatQueueStartTime(0),
+      m_boatQueueSide("") {
     LOG_INFO(Logger::TAG_SC, "Initialised");
 }
 
@@ -149,6 +152,19 @@ void SignalControl::halt() {
 }
 
 void SignalControl::update() {
+    // Check boat queue timer first
+    if (m_boatQueueActive) {
+        unsigned long queueElapsed = millis() - m_boatQueueStartTime;
+        if (queueElapsed >= BOAT_GREEN_PERIOD_MS) {
+            LOG_INFO(Logger::TAG_SC, "Boat green period expired (45s) - turning lights RED");
+            endBoatGreenPeriod();
+            
+            // Publish event to notify state machine
+            auto* expiredData = new SimpleEventData(BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED);
+            m_eventBus.publish(BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED, expiredData);
+        }
+    }
+    
     if (m_currentOperation == Operation::NONE) {
         return;  // No operation in progress
     }
@@ -234,4 +250,49 @@ void SignalControl::setBoatLight(const String& side, const String& color) {
     // Publish success event with light change data
     auto* lightData = new LightChangeData(side, color, false);  // false = boat light
     m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, lightData);
+}
+
+void SignalControl::startBoatGreenPeriod(const String& side) {
+    ensurePins();
+    LOG_INFO(Logger::TAG_SC, "Starting boat green period for %s side (45 seconds)", side.c_str());
+    
+    // Set the specified side to green, other side to red
+    if (lower(side) == "left") {
+        driveBoat(BOAT_LEFT, "Green");
+        driveBoat(BOAT_RIGHT, "Red");
+    } else if (lower(side) == "right") {
+        driveBoat(BOAT_RIGHT, "Green");
+        driveBoat(BOAT_LEFT, "Red");
+    }
+    
+    // Start queue timer
+    m_boatQueueActive = true;
+    m_boatQueueStartTime = millis();
+    m_boatQueueSide = side;
+    
+    LOG_INFO(Logger::TAG_SC, "Boat queue timer started - boats can pass for 45 seconds");
+}
+
+void SignalControl::endBoatGreenPeriod() {
+    if (!m_boatQueueActive) {
+        return;  // Already inactive
+    }
+    
+    ensurePins();
+    LOG_INFO(Logger::TAG_SC, "Ending boat green period - setting both sides to RED");
+    
+    // Set both boat lights to red
+    driveBoat(BOAT_LEFT, "Red");
+    driveBoat(BOAT_RIGHT, "Red");
+    
+    // Clear queue state
+    m_boatQueueActive = false;
+    m_boatQueueStartTime = 0;
+    m_boatQueueSide = "";
+    
+    LOG_INFO(Logger::TAG_SC, "Boat queue timer ended - waiting for boat passage confirmation");
+}
+
+bool SignalControl::isBoatGreenPeriodActive() const {
+    return m_boatQueueActive;
 }
