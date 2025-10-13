@@ -2,6 +2,7 @@
  * This section aims to display a list of the past few commands sent and received to the frontend in the UI
  */
 
+import React from "react";
 import { ActivitySecProps } from "../types/ActivitySec";
 import { Activity } from "lucide-react";
 

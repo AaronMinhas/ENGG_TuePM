@@ -1,26 +1,13 @@
 /**
  * Main dashboard that controls and monitors the ESP bridge system.
  *
- * Responsibilities:
- * - Establishes WebSocket connection using `getESPClient`.
- * - Polls the ESP status endpoints every 5 seconds to keep UI state fresh
- * - Maintains local React state for:
- *   - Bridge status (open/closed, last change time, lock engaged)
- *   - Car traffic lights (left/right)
- *   - Boat traffic lights (left/right)
- *   - System connection status (connected/connecting/disconnected, RSSI, uptime)
- *   - Packets sent/received counters with timestamps
- *   - Activity log of sent/received messages (max 50 entries)
- * - Provides handlers to send commands to the ESP32:
- *   - Open/close bridge
- *   - Change car traffic light (left/right)
- *   - Change boat traffic light (left/right)
- *   - Fetch system/bridge/traffic statuses on demand
- * - Renders a responsive dashboard layout:
- *   - Desktop (grid of DashCards, BridgeCard, ActivitySec)
- *   - Mobile (stacked grid with same components)
- * - Persists packet counters in localStorage so they survive reloads.
- *
+ * Refactored into smaller, focused components and hooks:
+ * - usePacketTracking: Manages packet counts with localStorage persistence
+ * - useActivityLog: Manages activity log entries
+ * - useESPStatus: Manages all ESP status states and control commands
+ * - useESPWebSocket: Handles WebSocket connection and real-time updates
+ * - DesktopDashboard: Desktop layout component
+ * - MobileDashboard: Mobile layout component
  *
  * TODO:
  * - Persist Activity logs over refreshes
@@ -29,487 +16,78 @@
  * - Need to add an indication of WIFI strength --> Using RSSI range -- closer to 0 the stronger
  */
 
-import React, { useEffect, useRef, useState } from "react";
-import {
-  getESPClient,
-  getBridgeState,
-  getCarTrafficState,
-  getBoatTrafficState,
-  getSystemState,
-  setBridgeState,
-  setCarTrafficState,
-  setBoatTrafficState,
-} from "./lib/api";
-import type {
-  BridgeStatus,
-  CarTrafficStatus,
-  CarTrafficState,
-  BoatTrafficStatus,
-  BoatTrafficState,
-  SystemStatus,
-  EventMsgT,
-} from "./lib/schema";
-import { IP, ActivityEntry, Icon } from "./types/GenTypes";
-
+import React from "react";
 import TopNav from "./components/TopNav";
-import DashCard from "./components/DashCard";
-import BridgeCard from "./components/BridgeCard";
-import ActivitySec from "./components/ActivitySec";
+import DesktopDashboard from "./components/DesktopDashboard";
+import MobileDashboard from "./components/MobileDashboard";
+import { usePacketTracking } from "./hooks/usePacketTracking";
+import { useActivityLog } from "./hooks/useActivityLog";
+import { useESPStatus } from "./hooks/useESPStatus";
+import { useESPWebSocket } from "./hooks/useESPWebSocket";
 
 function App() {
-  const [packetsSent, setPacketsSent] = useState(() => {
-    const saved = localStorage.getItem("packetsSent");
-    return saved ? parseInt(saved, 10) : 0;
+  // Packet tracking with localStorage
+  const { packetsSent, packetsReceived, lastSentAt, lastReceivedAt, incrementSent, incrementReceived } =
+    usePacketTracking();
+
+  // Activity log
+  const { activityLog, logActivity } = useActivityLog();
+
+  // ESP status and commands
+  const {
+    bridgeStatus,
+    setBridgeStatus,
+    carTrafficStatus,
+    setCarTrafficStatus,
+    boatTrafficStatus,
+    setBoatTrafficStatus,
+    systemStatus,
+    setSystemStatus,
+    handleFetchSystem,
+    handleOpenBridge,
+    handleCloseBridge,
+    handleCarTraffic,
+    handleBoatTraffic,
+  } = useESPStatus(incrementSent, incrementReceived, logActivity);
+
+  // WebSocket connection and real-time updates
+  const { wsStatus } = useESPWebSocket({
+    setBridgeStatus,
+    setCarTrafficStatus,
+    setBoatTrafficStatus,
+    setSystemStatus,
+    incrementReceived,
+    logActivity,
+    carTrafficStatus,
+    boatTrafficStatus,
   });
-  const [packetsReceived, setPacketsReceived] = useState(() => {
-    const saved = localStorage.getItem("packetsReceived");
-    return saved ? parseInt(saved, 10) : 0;
-  });
-  const [lastSentAt, setLastSentAt] = useState<number | null>(null);
-  const [lastReceivedAt, setLastReceivedAt] = useState<number | null>(null);
 
-  const [wsStatus, setWsStatus] = useState<"Connecting" | "Open" | "Closed">("Connecting");
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus | null>(null);
-  const [carTrafficStatus, setCarTrafficStatus] = useState<CarTrafficStatus | null>(null);
-  const [boatTrafficStatus, setBoatTrafficStatus] = useState<BoatTrafficStatus | null>(null);
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-
-  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
-  const lastBridgeStateRef = useRef<string | null>(null);
-  const seenLogRef = useRef<Set<string>>(new Set());
-
-  const logActivity = (type: "sent" | "received", message: string) => {
-    setActivityLog((prev) => [{ type, message, timestamp: Date.now() }, ...prev.slice(0, 49)]);
+  const dashboardProps = {
+    bridgeStatus,
+    carTrafficStatus,
+    boatTrafficStatus,
+    systemStatus,
+    packetsSent,
+    packetsReceived,
+    lastSentAt,
+    lastReceivedAt,
+    activityLog,
+    handleOpenBridge,
+    handleCloseBridge,
+    handleCarTraffic,
+    handleBoatTraffic,
+    handleFetchSystem,
   };
-
-  useEffect(() => {
-    localStorage.setItem("packetsSent", packetsSent.toString());
-  }, [packetsSent]);
-
-  useEffect(() => {
-    localStorage.setItem("packetsReceived", packetsReceived.toString());
-  }, [packetsReceived]);
-
-  const handleFetchBridge = async () => {
-    try {
-      setPacketsSent((prev) => prev + 1);
-      setLastSentAt(Date.now());
-      const data = await getBridgeState();
-      setLastReceivedAt(Date.now());
-      setBridgeStatus({ ...data, receivedAt: Date.now() });
-    } catch (e) {
-      console.error("Bridge status error:", e);
-    }
-  };
-
-  const handleFetchCarTraffic = async () => {
-    try {
-      setPacketsSent((prev) => prev + 1);
-      setLastSentAt(Date.now());
-      const data = await getCarTrafficState();
-      setPacketsReceived((prev) => prev + 1);
-      setLastReceivedAt(Date.now());
-      setCarTrafficStatus({
-        left: { ...data.left, receivedAt: Date.now() },
-        right: { ...data.right, receivedAt: Date.now() },
-      });
-    } catch (e) {
-      console.error("Car traffic status error:", e);
-    }
-  };
-
-  const handleFetchBoatTraffic = async () => {
-    try {
-      setPacketsSent((prev) => prev + 1);
-      setLastSentAt(Date.now());
-      const data = await getBoatTrafficState();
-      setPacketsReceived((prev) => prev + 1);
-      setLastReceivedAt(Date.now());
-      setBoatTrafficStatus({
-        left: { ...data.left, receivedAt: Date.now() },
-        right: { ...data.right, receivedAt: Date.now() },
-      });
-    } catch (e) {
-      console.error("Boat traffic status error:", e);
-    }
-  };
-
-  const handleFetchSystem = async () => {
-    try {
-      setPacketsSent((prev) => prev + 1);
-      setLastSentAt(Date.now());
-      logActivity("sent", "System status request");
-
-      const data = await getSystemState();
-      setPacketsReceived((prev) => prev + 1);
-      setLastReceivedAt(Date.now());
-      setSystemStatus({ ...data, receivedAt: Date.now() });
-      logActivity("received", `System status: ${data.connection}`);
-    } catch (e) {
-      console.error("System status error:", e);
-    }
-  };
-
-  const handleOpenBridge = async () => {
-    setPacketsSent((prev) => prev + 1);
-    setLastSentAt(Date.now());
-    logActivity("sent", "Open bridge");
-
-    const data: any = await setBridgeState("Open");
-    setPacketsReceived((prev) => prev + 1);
-    setLastReceivedAt(Date.now());
-    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridgeStatus?.state ?? "";
-    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridgeStatus?.lastChangeMs ?? 0;
-    setBridgeStatus({
-      state,
-      lastChangeMs,
-      lockEngaged: data.lockEngaged ?? data.current?.lockEngaged ?? false,
-      receivedAt: Date.now(),
-    });
-  };
-
-  const handleCloseBridge = async () => {
-    setPacketsSent((prev) => prev + 1);
-    setLastSentAt(Date.now());
-    logActivity("sent", "Close bridge");
-
-    const data: any = await setBridgeState("Closed");
-    setPacketsReceived((prev) => prev + 1);
-    setLastReceivedAt(Date.now());
-    const state = data.state ?? data.current?.state ?? data.requestedState ?? bridgeStatus?.state ?? "";
-    const lastChangeMs = data.lastChangeMs ?? data.current?.lastChangeMs ?? bridgeStatus?.lastChangeMs ?? 0;
-    setBridgeStatus({
-      state,
-      lastChangeMs,
-      lockEngaged: data.lockEngaged ?? data.current?.lockEngaged ?? false,
-      receivedAt: Date.now(),
-    });
-  };
-
-  const handleCarTraffic = async (value: CarTrafficState) => {
-    setPacketsSent((prev) => prev + 1);
-    setLastSentAt(Date.now());
-    logActivity("sent", `Change car traffic lights to: ${value}`);
-
-    const data = await setCarTrafficState(value);
-    setPacketsReceived((prev) => prev + 1);
-    setLastReceivedAt(Date.now());
-    setCarTrafficStatus(() => ({
-      left: { ...data.left, receivedAt: Date.now() },
-      right: { ...data.right, receivedAt: Date.now() },
-    }));
-    logActivity("received", `Car traffic lights set to: ${value}`);
-  };
-
-  const handleBoatTraffic = async (side: "left" | "right", value: BoatTrafficState) => {
-    setPacketsSent((prev) => prev + 1);
-    setLastSentAt(Date.now());
-    logActivity("sent", `Change ${side} boat traffic light: ${value}`);
-
-    const data = await setBoatTrafficState(side, value);
-    setPacketsReceived((prev) => prev + 1);
-    setLastReceivedAt(Date.now());
-    setBoatTrafficStatus({
-      left: { ...data.left, receivedAt: Date.now() },
-      right: { ...data.right, receivedAt: Date.now() },
-    });
-    logActivity("received", `Boat traffic ${side} state: ${value}`);
-  };
-
-  useEffect(() => {
-    const client = getESPClient(IP.AARON_4);
-    client.onStatus(setWsStatus);
-
-    // Real-time Activity from snapshot events
-    client.onEvent((evt: EventMsgT) => {
-      if (evt.type !== "event" || evt.path !== "/system/snapshot") return;
-      const payload: any = evt.payload || {};
-      const bridge = payload.bridge || {};
-      const traffic = payload.traffic || {};
-      const sys = payload.system || {};
-      const logArr: string[] = Array.isArray(payload.log) ? payload.log : [];
-
-      // Update tiles opportunistically
-      if (bridge.state)
-        setBridgeStatus({
-          state: bridge.state,
-          lastChangeMs: bridge.lastChangeMs || 0,
-          lockEngaged: !!bridge.lockEngaged,
-          receivedAt: Date.now(),
-        });
-      if (traffic.car) {
-        setCarTrafficStatus({
-          left: {
-            value: traffic.car.left?.value ?? (carTrafficStatus?.left.value || "Green"),
-            receivedAt: Date.now(),
-          },
-          right: {
-            value: traffic.car.right?.value ?? (carTrafficStatus?.right.value || "Green"),
-            receivedAt: Date.now(),
-          },
-        });
-      }
-      if (traffic.boat) {
-        setBoatTrafficStatus({
-          left: {
-            value: traffic.boat.left?.value ?? (boatTrafficStatus?.left.value || "Red"),
-            receivedAt: Date.now(),
-          },
-          right: {
-            value: traffic.boat.right?.value ?? (boatTrafficStatus?.right.value || "Red"),
-            receivedAt: Date.now(),
-          },
-        });
-      }
-      if (sys.connection)
-        setSystemStatus({
-          connection: sys.connection,
-          rssi: sys.rssi,
-          uptimeMs: sys.uptimeMs,
-          receivedAt: Date.now(),
-        });
-
-      // Activity: log bridge state changes
-      if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
-        logActivity("received", `Bridge state: ${bridge.state}`);
-        lastBridgeStateRef.current = bridge.state;
-        setPacketsReceived((prev) => prev + 1);
-        setLastReceivedAt(Date.now());
-      }
-
-      // Append new log lines
-      if (logArr.length) {
-        const seen = seenLogRef.current;
-        for (const line of logArr) {
-          if (!seen.has(line)) {
-            logActivity("received", line);
-            seen.add(line);
-          }
-        }
-        // cap seen size
-        if (seen.size > 256) {
-          seenLogRef.current = new Set(Array.from(seen).slice(-128));
-        }
-      }
-    });
-
-    const poll = async () => {
-      try {
-        const [b, ct, bt, s] = await Promise.all([
-          getBridgeState(),
-          getCarTrafficState(),
-          getBoatTrafficState(),
-          getSystemState(),
-        ]);
-        setPacketsReceived((prev) => prev + 4);
-        setBridgeStatus({ ...b, receivedAt: Date.now() });
-        setCarTrafficStatus({
-          left: { ...ct.left, receivedAt: Date.now() },
-          right: { ...ct.right, receivedAt: Date.now() },
-        });
-        setBoatTrafficStatus({
-          left: { ...bt.left, receivedAt: Date.now() },
-          right: { ...bt.right, receivedAt: Date.now() },
-        });
-        setSystemStatus({ ...s, receivedAt: Date.now() });
-      } catch (err) {
-        console.error("Poll error:", err);
-      }
-    };
-
-    poll();
-    const id = setInterval(poll, 5000);
-
-    return () => clearInterval(id);
-  }, []);
 
   return (
     <div className="bg-gray-100 min-h-screen w-full">
       <TopNav />
-
       <div className="flex justify-center mt-4">
-        {/* Desktop layout - 4x4 grid */}
-        <div className="hidden lg:grid grid-cols-4 grid-rows-4 gap-4 lg:h-[calc(100vh-300px)] max-w-[1700px] w-full mx-4">
-          {/* Row 1 */}
-          <DashCard
-            title="Bridge State"
-            variant="STATE"
-            iconT={Icon.BRIDGE}
-            options={[
-              { id: "d-b-o", label: "Open", action: () => handleOpenBridge() },
-              { id: "d-b-c", label: "Close", action: () => handleCloseBridge() },
-            ]}
-            description={bridgeStatus?.state || ""}
-            updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
-            status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
-          />
-          <DashCard
-            title="Car Traffic"
-            variant="STATE"
-            iconT={Icon.CAR}
-            options={[
-              { id: "d-c-r", label: "Red", action: () => handleCarTraffic("Red") },
-              { id: "d-c-y", label: "Yellow", action: () => handleCarTraffic("Yellow") },
-              { id: "d-c-g", label: "Green", action: () => handleCarTraffic("Green") },
-            ]}
-            description={`L:${carTrafficStatus?.left.value || "?"} R:${carTrafficStatus?.right.value || "?"}`}
-            updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
-            status={
-              carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
-            }
-          />
-          <DashCard
-            title="Boat Traffic"
-            variant="STATE"
-            iconT={Icon.BOAT}
-            options={[
-              { id: "d-bt-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
-              { id: "d-bt-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
-            ]}
-            description={`L:${boatTrafficStatus?.left.value || "?"} R:${boatTrafficStatus?.right.value || "?"}`}
-            updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
-            status={
-              boatTrafficStatus?.left.value
-                ? { kind: "boat", value: boatTrafficStatus.left.value }
-                : undefined
-            }
-          />
-          <div className="row-span-4">
-            <ActivitySec log={activityLog} />
-          </div>
-
-          {/* Row 2 */}
-          <DashCard
-            title="System State"
-            variant="STATE"
-            iconT={Icon.SYSTEM}
-            options={[{ id: "d-s", label: "Update Status", action: () => handleFetchSystem() }]}
-            description={systemStatus?.connection || ""}
-            updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
-            status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
-          />
-          {/* Bridge card spans 2x3 (2 columns, 3 rows) */}
-          <div className="col-span-2 row-span-3">
-            <BridgeCard bridgeStatus={bridgeStatus} />
-          </div>
-
-          {/* Row 3 - Bridge card continues here */}
-
-          {/* Row 4 */}
-          <DashCard
-            title="Packets Sent"
-            iconT={Icon.PACKETS_SEND}
-            description={packetsSent.toString()}
-            updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
-          />
-          {/* Bridge card continues here */}
-
-          <DashCard
-            title="Packets Received"
-            iconT={Icon.PACKETS_REC}
-            description={packetsReceived.toString()}
-            updatedAt={lastReceivedAt ? timeAgo(lastReceivedAt) : ""}
-          />
-        </div>
-
-        {/* Mobile layout - 2x8 grid */}
-        <div className="grid lg:hidden grid-cols-2 grid-rows-8 h-[calc(100dvh - 300px)] min-h-0 w-full gap-4 mx-4 mb-4">
-          {/* Activity - 2x2 (spans rows 1-2, cols 1-2) */}
-          <div className="col-span-2 row-span-2">
-            <ActivitySec log={activityLog} />
-          </div>
-
-          {/* Bridge - 2x2 (spans rows 3-4, cols 1-2) */}
-          <div className="col-span-2 row-span-2">
-            <BridgeCard bridgeStatus={bridgeStatus} />
-          </div>
-
-          {/* DashCards - 1x1 each in 2x4 grid (rows 5-8) */}
-          <DashCard
-            title="Bridge State"
-            variant="STATE"
-            iconT={Icon.BRIDGE}
-            options={[
-              { id: "m-b-o", label: "Open", action: () => handleOpenBridge() },
-              { id: "m-b-c", label: "Close", action: () => handleCloseBridge() },
-            ]}
-            description={bridgeStatus?.state || ""}
-            updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
-            status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
-          />
-          <DashCard
-            title="System State"
-            variant="STATE"
-            iconT={Icon.SYSTEM}
-            options={[{ id: "m-s", label: "Update Status", action: () => handleFetchSystem() }]}
-            description={systemStatus?.connection || ""}
-            updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
-            status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
-          />
-          <DashCard
-            title="Car Traffic"
-            variant="STATE"
-            iconT={Icon.CAR}
-            options={[
-              { id: "m-c-r", label: "Red", action: () => handleCarTraffic("Red") },
-              { id: "m-c-y", label: "Yellow", action: () => handleCarTraffic("Yellow") },
-              { id: "m-c-g", label: "Green", action: () => handleCarTraffic("Green") },
-            ]}
-            description={`L:${carTrafficStatus?.left.value || "?"} R:${carTrafficStatus?.right.value || "?"}`}
-            updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
-            status={
-              carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
-            }
-          />
-          <DashCard
-            title="Boat Traffic"
-            variant="STATE"
-            iconT={Icon.BOAT}
-            options={[
-              { id: "m-bt-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
-              { id: "m-bt-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
-            ]}
-            description={`L:${boatTrafficStatus?.left.value || "?"} R:${boatTrafficStatus?.right.value || "?"}`}
-            updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
-            status={
-              boatTrafficStatus?.left.value
-                ? { kind: "boat", value: boatTrafficStatus.left.value }
-                : undefined
-            }
-          />
-          <DashCard
-            title="Packets Sent"
-            iconT={Icon.PACKETS_SEND}
-            description={packetsSent.toString()}
-            updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
-          />
-          <DashCard
-            title="Packets Received"
-            iconT={Icon.PACKETS_REC}
-            description={packetsReceived.toString()}
-            updatedAt={lastReceivedAt ? timeAgo(lastReceivedAt) : ""}
-          />
-        </div>
+        <DesktopDashboard {...dashboardProps} />
+        <MobileDashboard {...dashboardProps} />
       </div>
     </div>
   );
-}
-
-function timeAgo(timestampMs: number): string {
-  const now = Date.now();
-  const diffMs = now - timestampMs;
-  const diffSec = Math.floor(diffMs / 1000);
-
-  if (diffSec < 60) return `${diffSec} second${diffSec !== 1 ? "s" : ""} ago`;
-
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? "s" : ""} ago`;
-
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr} hour${diffHr !== 1 ? "s" : ""} ago`;
-
-  const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 }
 
 export default App;
