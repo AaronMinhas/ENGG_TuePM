@@ -23,9 +23,6 @@ interface DesktopDashboardProps {
   readonly handleFetchSystem: () => void;
 }
 
-/**
- * Desktop dashboard layout component (4x4 grid)
- */
 export default function DesktopDashboard({
   bridgeStatus,
   carTrafficStatus,
@@ -44,7 +41,6 @@ export default function DesktopDashboard({
 }: DesktopDashboardProps) {
   return (
     <div className="hidden lg:grid grid-cols-4 grid-rows-4 gap-4 lg:h-[calc(100vh-300px)] max-w-[1700px] w-full mx-4">
-      {/* Row 1 */}
       <DashCard
         title="Bridge State"
         variant="STATE"
@@ -92,7 +88,6 @@ export default function DesktopDashboard({
         <ActivitySec log={activityLog} />
       </div>
 
-      {/* Row 2 */}
       <DashCard
         title="System State"
         variant="STATE"
@@ -102,21 +97,16 @@ export default function DesktopDashboard({
         updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
         status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
       />
-      {/* Bridge card spans 2x3 (2 columns, 3 rows) */}
       <div className="col-span-2 row-span-3">
         <BridgeCard bridgeStatus={bridgeStatus} />
       </div>
 
-      {/* Row 3 - Bridge card continues here */}
-
-      {/* Row 4 */}
       <DashCard
         title="Packets Sent"
         iconT={Icon.PACKETS_SEND}
         description={packetsSent.toString()}
         updatedAt={lastSentAt ? timeAgo(lastSentAt) : ""}
       />
-      {/* Bridge card continues here */}
 
       <DashCard
         title="Packets Received"

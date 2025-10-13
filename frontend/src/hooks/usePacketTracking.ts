@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
 
-/**
- * Hook for tracking packets sent/received with localStorage persistence
- */
 export function usePacketTracking() {
   const [packetsSent, setPacketsSent] = useState(() => {
     const saved = localStorage.getItem("packetsSent");
@@ -17,12 +14,10 @@ export function usePacketTracking() {
   const [lastSentAt, setLastSentAt] = useState<number | null>(null);
   const [lastReceivedAt, setLastReceivedAt] = useState<number | null>(null);
 
-  // Persist packets sent to localStorage
   useEffect(() => {
     localStorage.setItem("packetsSent", packetsSent.toString());
   }, [packetsSent]);
 
-  // Persist packets received to localStorage
   useEffect(() => {
     localStorage.setItem("packetsReceived", packetsReceived.toString());
   }, [packetsReceived]);

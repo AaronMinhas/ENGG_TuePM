@@ -14,9 +14,6 @@ import {
   setBoatTrafficState,
 } from "../lib/api";
 
-/**
- * Hook for managing ESP bridge/traffic/system status and control commands
- */
 export function useESPStatus(
   incrementSent: () => void,
   incrementReceived: (count?: number) => void,

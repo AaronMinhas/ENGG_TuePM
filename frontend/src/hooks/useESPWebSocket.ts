@@ -14,9 +14,6 @@ interface UseESPWebSocketProps {
   boatTrafficStatus: BoatTrafficStatus | null;
 }
 
-/**
- * Hook for managing WebSocket connection and ESP status polling
- */
 export function useESPWebSocket({
   setBridgeStatus,
   setCarTrafficStatus,
@@ -27,15 +24,12 @@ export function useESPWebSocket({
   carTrafficStatus,
   boatTrafficStatus,
 }: UseESPWebSocketProps) {
-  const [wsStatus, setWsStatus] = useState<"Connecting" | "Open" | "Closed">("Connecting");
   const lastBridgeStateRef = useRef<string | null>(null);
   const seenLogRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const client = getESPClient(IP.AARON_4);
-    client.onStatus(setWsStatus);
 
-    // Real-time Activity from snapshot events
     client.onEvent((evt: EventMsgT) => {
       if (evt.type !== "event" || evt.path !== "/system/snapshot") return;
       const payload: any = evt.payload || {};
@@ -44,7 +38,6 @@ export function useESPWebSocket({
       const sys = payload.system || {};
       const logArr: string[] = Array.isArray(payload.log) ? payload.log : [];
 
-      // Update tiles opportunistically
       if (bridge.state)
         setBridgeStatus({
           state: bridge.state,
@@ -84,14 +77,12 @@ export function useESPWebSocket({
           receivedAt: Date.now(),
         });
 
-      // Activity: log bridge state changes
       if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
         logActivity("received", `Bridge state: ${bridge.state}`);
         lastBridgeStateRef.current = bridge.state;
         incrementReceived();
       }
 
-      // Append new log lines
       if (logArr.length) {
         const seen = seenLogRef.current;
         for (const line of logArr) {
@@ -100,7 +91,6 @@ export function useESPWebSocket({
             seen.add(line);
           }
         }
-        // cap seen size
         if (seen.size > 256) {
           seenLogRef.current = new Set(Array.from(seen).slice(-128));
         }
@@ -136,9 +126,5 @@ export function useESPWebSocket({
 
     return () => clearInterval(id);
   }, []);
-
-  return {
-    wsStatus,
-  };
 }
 

@@ -23,9 +23,6 @@ interface MobileDashboardProps {
   readonly handleFetchSystem: () => void;
 }
 
-/**
- * Mobile dashboard layout component (2x8 grid)
- */
 export default function MobileDashboard({
   bridgeStatus,
   carTrafficStatus,
@@ -44,17 +41,14 @@ export default function MobileDashboard({
 }: MobileDashboardProps) {
   return (
     <div className="grid lg:hidden grid-cols-2 grid-rows-8 h-[calc(100dvh - 300px)] min-h-0 w-full gap-4 mx-4 mb-4">
-      {/* Activity - 2x2 (spans rows 1-2, cols 1-2) */}
       <div className="col-span-2 row-span-2">
         <ActivitySec log={activityLog} />
       </div>
 
-      {/* Bridge - 2x2 (spans rows 3-4, cols 1-2) */}
       <div className="col-span-2 row-span-2">
         <BridgeCard bridgeStatus={bridgeStatus} />
       </div>
 
-      {/* DashCards - 1x1 each in 2x4 grid (rows 5-8) */}
       <DashCard
         title="Bridge State"
         variant="STATE"
