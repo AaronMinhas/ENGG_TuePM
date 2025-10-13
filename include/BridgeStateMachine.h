@@ -12,6 +12,8 @@ public:
     void handleEvent(const BridgeEvent& event);
     BridgeState getCurrentState() const;
     String getStateString() const;
+    
+    static const char* stateName(BridgeState s);
 
 private:
     // Boat passage tracking (tracks left and right boats)
@@ -24,9 +26,6 @@ private:
         switch (s) { case BoatSide::LEFT: return "left"; case BoatSide::RIGHT: return "right"; default: return "unknown"; }
     }
     static BoatSide otherSide(BoatSide s) { return s == BoatSide::LEFT ? BoatSide::RIGHT : (s == BoatSide::RIGHT ? BoatSide::LEFT : BoatSide::UNKNOWN); }
-
-    // Easily readable state names
-    static const char* stateName(BridgeState s);
 
     void changeState(BridgeState newState);
     void issueCommand(CommandTarget target, CommandAction action);

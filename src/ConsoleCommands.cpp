@@ -47,39 +47,30 @@ void ConsoleCommands::handleCommand(const String& cmd) {
   if (cmd == "lower" || cmd == "l") { motor_.lowerBridge(); return; }
   if (cmd == "halt"  || cmd == "h" || cmd == "stop") { motor_.halt(); return; }
   if (cmd == "test motor" || cmd == "tm") { motor_.testMotor(); return; }
-  if (cmd == "test encoder" || cmd == "te") { motor_.testEncoder(); return; }
-  if (cmd == "count" || cmd == "c") { LOG_INFO(Logger::TAG_MC, "MOTOR CONTROL: Current encoder count: %ld", motor_.getEncoderCount()); return; }
-  if (cmd == "reset" || cmd == "0") { motor_.resetEncoder(); return; }
 
-  // Fake boat event commands
-  if (cmd == "fake boat detected" || cmd == "fbd") {
-    eventBus_.publish(BridgeEvent::BOAT_DETECTED);
-    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_DETECTED published");
+  // Test boat event commands
+  if (cmd == "test boat left" || cmd == "tbl") {
+    auto* eventData = new BoatEventData(BridgeEvent::BOAT_DETECTED_LEFT, BoatEventSide::LEFT);
+    eventBus_.publish(BridgeEvent::BOAT_DETECTED_LEFT, eventData);
+    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat detected from LEFT side");
     return;
   }
-  if (cmd == "fake boat passed" || cmd == "fbp") {
-    eventBus_.publish(BridgeEvent::BOAT_PASSED);
-    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_PASSED published");
+  if (cmd == "test boat right" || cmd == "tbr") {
+    auto* eventData = new BoatEventData(BridgeEvent::BOAT_DETECTED_RIGHT, BoatEventSide::RIGHT);
+    eventBus_.publish(BridgeEvent::BOAT_DETECTED_RIGHT, eventData);
+    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat detected from RIGHT side");
     return;
   }
-  if (cmd == "fake boat left" || cmd == "fbl") {
-    eventBus_.publish(BridgeEvent::BOAT_DETECTED_LEFT);
-    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_DETECTED_LEFT published");
+  if (cmd == "test boat pass left" || cmd == "tbpl") {
+    auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
+    eventBus_.publish(BridgeEvent::BOAT_PASSED_LEFT, eventData);
+    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat passing through LEFT side");
     return;
   }
-  if (cmd == "fake boat right" || cmd == "fbr") {
-    eventBus_.publish(BridgeEvent::BOAT_DETECTED_RIGHT);
-    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_DETECTED_RIGHT published");
-    return;
-  }
-  if (cmd == "fake boat passed left" || cmd == "fbpl") {
-    eventBus_.publish(BridgeEvent::BOAT_PASSED_LEFT);
-    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_PASSED_LEFT published");
-    return;
-  }
-  if (cmd == "fake boat passed right" || cmd == "fbpr") {
-    eventBus_.publish(BridgeEvent::BOAT_PASSED_RIGHT);
-    LOG_INFO(Logger::TAG_CON, "FAKE EVENT: BOAT_PASSED_RIGHT published");
+  if (cmd == "test boat pass right" || cmd == "tbpr") {
+    auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
+    eventBus_.publish(BridgeEvent::BOAT_PASSED_RIGHT, eventData);
+    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat passing through RIGHT side");
     return;
   }
 
@@ -146,14 +137,6 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: %s (right sensor)", enable ? "enabled" : "disabled");
     return;
   }
-  if (cmd == "us state") { printStatus(); return; }
-  if (cmd == "ultra status") { printStatus(); return; }
-  if (cmd == "ultra read" || cmd == "ur") {
-    // Force an update tick and then print status
-    detect_.update();
-    printStatus();
-    return;
-  }
 
   if (cmd.startsWith("log level ")) {
     String levelStr = cmd.substring(String("log level ").length());
@@ -176,48 +159,6 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     }
     return;
   }
-  
-  // Individual sensor commands for debugging
-  if (cmd == "ultra left" || cmd == "ul") {
-    detect_.update();
-    const float leftDist = detect_.getLeftFilteredDistanceCm();
-    LOG_DEBUG(Logger::TAG_DS, "ULTRASONIC_LEFT: dist=%s cm, zone=%s, mode=%s",
-              (leftDist > 0 ? String(leftDist, 1).c_str() : "unknown"),
-              detect_.getLeftZoneName(),
-              detect_.isSimulationMode() ? "SIM" : "REAL");
-    return;
-  }
-  if (cmd == "ultra right" || cmd == "ur2") {
-    detect_.update();
-    const float rightDist = detect_.getRightFilteredDistanceCm();
-    LOG_DEBUG(Logger::TAG_DS, "ULTRASONIC_RIGHT: dist=%s cm, zone=%s, mode=%s",
-              (rightDist > 0 ? String(rightDist, 1).c_str() : "unknown"),
-              detect_.getRightZoneName(),
-              detect_.isSimulationMode() ? "SIM" : "REAL");
-    return;
-  }
-
-  if (cmd == "ultra stream on") {
-    streamMask_ = STREAM_LEFT | STREAM_RIGHT;
-    LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: enabled (both sensors)");
-    return;
-  }
-  if (cmd == "ultra stream off") {
-    streamMask_ = 0;
-    LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: disabled");
-    return;
-  }
-  if (cmd.startsWith("ultra stream ")) {
-    String rest = cmd.substring(String("ultra stream ").length());
-    rest.trim();
-    // Accept plain milliseconds (e.g., "100")
-    long val = rest.toInt();
-    if (val > 0) {
-      streamIntervalMs_ = (unsigned long)val;
-      LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: interval set to %ld ms", val);
-      return;
-    }
-  }
 
   if (cmd == "status" || cmd == "mode") { printStatus(); return; }
   if (cmd == "help" || cmd == "?") { printHelp(); return; }
@@ -230,23 +171,15 @@ void ConsoleCommands::printHelp() {
   Serial.println("  sim on / simulation on    - Enable simulation (motor + ultrasonic)");
   Serial.println("  sim off / simulation off  - Disable simulation (motor + ultrasonic)");
   Serial.println("  raise|r / lower|l / halt|h / stop");
-  Serial.println("  test motor|tm / test encoder|te / count|c / reset|0");
+  Serial.println("  test motor|tm");
   Serial.println("  us                        - Toggle ultrasonic streaming for both sensors");
   Serial.println("  usl                       - Toggle ultrasonic streaming for left sensor only");
   Serial.println("  usr                       - Toggle ultrasonic streaming for right sensor only");
-  Serial.println("  us state                  - Show ultrasonic status (both sensors)");
-  Serial.println("  ultra status              - Show ultrasonic status (same as 'us state')");
-  Serial.println("  ultra read|ur             - Take a reading tick and show both sensors");
-  Serial.println("  ultra left|ul             - Read left sensor only");
-  Serial.println("  ultra right|ur2           - Read right sensor only");
-  Serial.println("  ultra stream on|off       - Start/stop streaming readings (both sensors)");
-  Serial.println("  ultra stream <ms>         - Set stream interval (e.g., 100 for 10Hz)");
-  Serial.println("  fake boat detected|fbd   - Trigger fake BOAT_DETECTED event");
-  Serial.println("  fake boat passed|fbp     - Trigger fake BOAT_PASSED event");
-  Serial.println("  fake boat left|fbl       - Trigger fake BOAT_DETECTED_LEFT event");
-  Serial.println("  fake boat right|fbr      - Trigger fake BOAT_DETECTED_RIGHT event");
-  Serial.println("  fake boat passed left|fbpl  - Trigger fake BOAT_PASSED_LEFT event");
-  Serial.println("  fake boat passed right|fbpr  - Trigger fake BOAT_PASSED_RIGHT event");
+  Serial.println("  === Test/Simulation Commands ===");
+  Serial.println("  test boat left|tbl       - Simulate boat from LEFT (exits RIGHT)");
+  Serial.println("  test boat right|tbr      - Simulate boat from RIGHT (exits LEFT)");
+  Serial.println("  test boat pass left|tbpl - Simulate boat exiting LEFT side");
+  Serial.println("  test boat pass right|tbpr - Simulate boat exiting RIGHT side");
   Serial.println("  car light <colour>|cl <colour>  - Set car lights (red/yellow/green)");
   Serial.println("  boat light <side> <colour>|bl <side> <colour>  - Set boat lights (left/right, red/green)");
   Serial.println("  lights status|ls          - Show light control status");

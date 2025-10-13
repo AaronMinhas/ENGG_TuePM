@@ -66,6 +66,9 @@ void controlLogicTask(void* parameters) {
         // Check motor operation progress (non-blocking)
         motorControl.checkProgress();
         
+        // Process signal control timing (non-blocking traffic light transitions)
+        signalControl.update();
+        
         // Monitor sensors (ultrasonic distance → events)
         detectionSystem.update();
         
