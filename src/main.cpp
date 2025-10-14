@@ -35,6 +35,9 @@ BridgeStateMachine stateMachine(systemEventBus, systemCommandBus);
 StateWriter stateWriter(systemEventBus);
 WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus);
 
+// SafetyManager monitorint components
+SafetyManager safetyManager(systemEventBus, systemCommandBus);
+
 // Sensors
 DetectionSystem detectionSystem(systemEventBus);
 
@@ -117,6 +120,11 @@ void setup() {
     
     LOG_INFO(Logger::TAG_SYS, "Initialising EventBus and CommandBus...");
     LOG_INFO(Logger::TAG_SYS, "Initialising subsystems...");
+
+    LOG_INFO(Logger::TAG_SYS, "Initializing Safety Manager...");
+    safetyManager.setMotorControl(&motorControl);
+    safetyManager.setSignalControl(&signalControl);
+    safetyManager.begin();
     
     LOG_INFO(Logger::TAG_MC, "Initialising Motor Control...");
     motorControl.init();
@@ -187,6 +195,7 @@ void setup() {
 
 void loop() {
     // Monitor task health
+    safetyManager.update(); // SafetyManager watching
     if (controlLogicTaskHandle != NULL) {
     } else {
         LOG_WARN(Logger::TAG_SYS, "Control Logic task has stopped!");
