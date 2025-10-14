@@ -65,9 +65,13 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
     
     // Global event handling. Takes precedence over state specific events
     // Does not implement Safety Manager but that is low priority atp.
-    if (event == BridgeEvent::FAULT_DETECTED) {
+    if (event == BridgeEvent::FAULT_DETECTED || event == BridgeEvent::BOAT_PASSAGE_TIMEOUT) {
         if (m_currentState != BridgeState::FAULT) {
-            LOG_WARN(Logger::TAG_FSM, "FAULT detected → entering FAULT state");
+            if (event == BridgeEvent::BOAT_PASSAGE_TIMEOUT) {
+                LOG_ERROR(Logger::TAG_FSM, "BOAT_PASSAGE_TIMEOUT - boat didn't pass within timeout → FAULT state");
+            } else {
+                LOG_WARN(Logger::TAG_FSM, "FAULT detected → entering FAULT state");
+            }
             changeState(BridgeState::FAULT);
             issueCommand(CommandTarget::CONTROLLER, CommandAction::ENTER_SAFE_STATE);
         }
@@ -87,7 +91,9 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
     switch (m_currentState) {
         case BridgeState::IDLE:
             // IDLE state handles trigger events and success confirmations
-            if (event == BridgeEvent::BOAT_DETECTED) {
+            if (event == BridgeEvent::BOAT_DETECTED || 
+                event == BridgeEvent::BOAT_DETECTED_LEFT || 
+                event == BridgeEvent::BOAT_DETECTED_RIGHT) {
                 // Latch the side of detection and mark cycle active
                 if (!boatCycleActive_) {
                     boatCycleActive_ = true;
@@ -129,16 +135,26 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
             if (event == BridgeEvent::BRIDGE_OPENED_SUCCESS) {
                 LOG_INFO(Logger::TAG_FSM, "BRIDGE_OPENED_SUCCESS received - transitioning to OPENING");
                 changeState(BridgeState::OPENING);
-                // Set boat lights based on detected side: detected side = Green, other = Red
+                
+                // Record entry time for emergency timeout
+                openingStateEntryTime_ = millis();
+                
+                // Start boat queue timer (45 seconds green period)
+                String queueSide = (activeBoatSide_ == BoatSide::LEFT) ? "left" : 
+                                  (activeBoatSide_ == BoatSide::RIGHT) ? "right" : "unknown";
+                
                 if (activeBoatSide_ == BoatSide::LEFT) {
                     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "Green");
                     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "Red");
+                    LOG_INFO(Logger::TAG_FSM, "Started boat queue: LEFT=GREEN, RIGHT=RED (45s timer)");
                 } else if (activeBoatSide_ == BoatSide::RIGHT) {
                     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "Green");
                     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "Red");
+                    LOG_INFO(Logger::TAG_FSM, "Started boat queue: LEFT=RED, RIGHT=GREEN (45s timer)");
                 } else {
                     LOG_WARN(Logger::TAG_FSM, "activeBoatSide unknown; leaving boat lights unchanged");
                 }
+                
                 // Now wait for BOAT_PASSED (opposite side to clear)
                 LOG_INFO(Logger::TAG_FSM, "Now waiting for BOAT_PASSED on side=%s",
                          sideName(otherSide(activeBoatSide_)));
@@ -148,14 +164,24 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
             break;
 
         case BridgeState::OPENING:
-            // OPENING state waits ONLY for boat to pass
-            if (event == BridgeEvent::BOAT_PASSED) {
+            // OPENING state waits for boat to pass (and handles green period expiration)
+            if (event == BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED) {
+                LOG_INFO(Logger::TAG_FSM, "BOAT_GREEN_PERIOD_EXPIRED - 45s queue ended, lights now RED");
+                LOG_INFO(Logger::TAG_FSM, "Bridge remains open, waiting for boat passage confirmation...");
+                // Lights already turned red by SignalControl, just continue waiting for BOAT_PASSED
+            } else if (event == BridgeEvent::BOAT_PASSED || 
+                       event == BridgeEvent::BOAT_PASSED_LEFT || 
+                       event == BridgeEvent::BOAT_PASSED_RIGHT) {
                 // Validate the passing side is the opposite of detected side 
                 BoatSide expected = otherSide(activeBoatSide_);
                 if (expected == BoatSide::UNKNOWN || lastEventSide_ == BoatSide::UNKNOWN || lastEventSide_ == expected) {
                     LOG_INFO(Logger::TAG_FSM, "BOAT_PASSED received (side OK) - transitioning to OPEN");
                     changeState(BridgeState::OPEN);
-                    // Set both boat lights to RED
+                    
+                    // Clear timeout tracking
+                    openingStateEntryTime_ = 0;
+                    
+                    // Ensure both boat lights are RED
                     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "Red");
                     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "Red");
                     // Issue command to lower bridge
@@ -371,7 +397,15 @@ void BridgeStateMachine::subscribeToEvents() {
 
     // Subscribe to external events
     m_eventBus.subscribe(BridgeEvent::BOAT_DETECTED, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::BOAT_DETECTED_LEFT, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::BOAT_DETECTED_RIGHT, eventCallback, EventPriority::NORMAL);
     m_eventBus.subscribe(BridgeEvent::BOAT_PASSED, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::BOAT_PASSED_LEFT, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::BOAT_PASSED_RIGHT, eventCallback, EventPriority::NORMAL);
+    
+    // Subscribe to boat queue events
+    m_eventBus.subscribe(BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::BOAT_PASSAGE_TIMEOUT, eventCallback, EventPriority::EMERGENCY);
     
     // Subscribe to manual control events (Command Mode)
     m_eventBus.subscribe(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED, eventCallback, EventPriority::NORMAL);
@@ -396,6 +430,21 @@ void BridgeStateMachine::subscribeToEvents() {
     LOG_INFO(Logger::TAG_FSM, "Subscribed to all relevant events on EventBus");
 }
 
+void BridgeStateMachine::checkTimeouts() {
+    // Check for emergency timeout in OPENING state
+    if (m_currentState == BridgeState::OPENING && openingStateEntryTime_ > 0) {
+        unsigned long elapsed = millis() - openingStateEntryTime_;
+        
+        if (elapsed >= BOAT_PASSAGE_TIMEOUT_MS) {
+            LOG_ERROR(Logger::TAG_FSM, "Emergency timeout in OPENING state (%lu ms) - boat didn't pass", elapsed);
+            
+            // Publish timeout event (will trigger FAULT via global handler)
+            auto* timeoutData = new SimpleEventData(BridgeEvent::BOAT_PASSAGE_TIMEOUT);
+            m_eventBus.publish(BridgeEvent::BOAT_PASSAGE_TIMEOUT, timeoutData, EventPriority::EMERGENCY);
+        }
+    }
+}
+
 void BridgeStateMachine::onEventReceived(EventData* eventData) {
     if (eventData == nullptr) {
         LOG_WARN(Logger::TAG_FSM, "Received null event data");
@@ -408,7 +457,9 @@ void BridgeStateMachine::onEventReceived(EventData* eventData) {
     if (sideInfo == BoatEventSide::LEFT || sideInfo == BoatEventSide::RIGHT) {
         BoatSide parsedSide = (sideInfo == BoatEventSide::LEFT) ? BoatSide::LEFT : BoatSide::RIGHT;
         lastEventSide_ = parsedSide;
-        if (event == BridgeEvent::BOAT_DETECTED && !boatCycleActive_) {
+        if ((event == BridgeEvent::BOAT_DETECTED || 
+             event == BridgeEvent::BOAT_DETECTED_LEFT || 
+             event == BridgeEvent::BOAT_DETECTED_RIGHT) && !boatCycleActive_) {
             activeBoatSide_ = parsedSide;
         }
     }

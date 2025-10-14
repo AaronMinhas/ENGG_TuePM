@@ -75,6 +75,9 @@ void controlLogicTask(void* parameters) {
         // Update LED indicator (handles blinking)
         localStateIndicator.update();
         
+        // Check state machine timeouts (boat passage timeout)
+        stateMachine.checkTimeouts();
+        
         // TODO: Monitor system health  
         // safetyManager.checkSystemHealth();
         
