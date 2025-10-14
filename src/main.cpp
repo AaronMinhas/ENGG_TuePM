@@ -39,7 +39,7 @@ WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus);
 DetectionSystem detectionSystem(systemEventBus);
 
 // Console router
-ConsoleCommands console(motorControl, detectionSystem);
+ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl);
 
 // Task handles for FreeRTOS
 TaskHandle_t controlLogicTaskHandle = NULL;
@@ -66,8 +66,17 @@ void controlLogicTask(void* parameters) {
         // Check motor operation progress (non-blocking)
         motorControl.checkProgress();
         
+        // Process signal control timing (non-blocking traffic light transitions)
+        signalControl.update();
+        
         // Monitor sensors (ultrasonic distance → events)
         detectionSystem.update();
+        
+        // Update LED indicator (handles blinking)
+        localStateIndicator.update();
+        
+        // Check state machine timeouts (boat passage timeout)
+        stateMachine.checkTimeouts();
         
         // TODO: Monitor system health  
         // safetyManager.checkSystemHealth();
@@ -97,7 +106,7 @@ void networkTask(void* parameters) {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Logger::begin(Logger::Level::DEBUG);
+    Logger::begin(Logger::Level::INFO);
     LOG_INFO(Logger::TAG_SYS, "======= ESP32 Bridge Control System Starting =======");
     LOG_INFO(Logger::TAG_SYS, "Total heap: %u", ESP.getHeapSize());
     LOG_INFO(Logger::TAG_SYS, "Free heap: %u", ESP.getFreeHeap());
@@ -130,6 +139,10 @@ void setup() {
     LOG_INFO(Logger::TAG_DS, "Initialising Detection System (ultrasonic)...");
     detectionSystem.begin();
     LOG_INFO(Logger::TAG_DS, "Detection System ready for bi-directional boat tracking");
+
+    LOG_INFO(Logger::TAG_LOC, "Initialising Local State Indicator...");
+    localStateIndicator.begin();
+    LOG_INFO(Logger::TAG_LOC, "GlowBit Stick indicator ready");
 
     LOG_INFO(Logger::TAG_WS, "Network services will start once WiFi is connected.");
     

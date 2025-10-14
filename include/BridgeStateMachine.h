@@ -10,8 +10,11 @@ public:
     BridgeStateMachine(EventBus& eventBus, CommandBus& commandBus);
     void begin();
     void handleEvent(const BridgeEvent& event);
+    void checkTimeouts();  // Check for emergency timeouts
     BridgeState getCurrentState() const;
     String getStateString() const;
+    
+    static const char* stateName(BridgeState s);
 
 private:
     // Boat passage tracking (tracks left and right boats)
@@ -19,14 +22,14 @@ private:
     BoatSide activeBoatSide_ = BoatSide::UNKNOWN;  // Side that first detected the boat
     BoatSide lastEventSide_ = BoatSide::UNKNOWN;   // Side parsed from the most recent boat event
     bool boatCycleActive_ = false;                 // Set to True from first detection until traffic resumes
+    
+    // Emergency timeout tracking
+    unsigned long openingStateEntryTime_ = 0;      // When bridge entered OPENING state
 
     static const char* sideName(BoatSide s) {
         switch (s) { case BoatSide::LEFT: return "left"; case BoatSide::RIGHT: return "right"; default: return "unknown"; }
     }
     static BoatSide otherSide(BoatSide s) { return s == BoatSide::LEFT ? BoatSide::RIGHT : (s == BoatSide::RIGHT ? BoatSide::LEFT : BoatSide::UNKNOWN); }
-
-    // Easily readable state names
-    static const char* stateName(BridgeState s);
 
     void changeState(BridgeState newState);
     void issueCommand(CommandTarget target, CommandAction action);

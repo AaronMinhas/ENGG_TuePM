@@ -23,6 +23,9 @@ public:
         LEFT_TO_RIGHT,
         RIGHT_TO_LEFT
     };
+    
+    // Beam break sensor methods
+    bool readBeamBreak() const;  // Returns true if beam is broken (boat present)
 
     // Debug/status helpers
     float getLeftFilteredDistanceCm() const;  // Returns EMA-filtered distance (cm), <0 if unknown
@@ -54,6 +57,11 @@ private:
     // Boat passing tracking
     unsigned long passedCriticalEnterMs = 0;
     unsigned long passedClearEnterMs = 0;
+    
+    // Beam break sensor tracking (for debouncing)
+    bool beamBroken = false;
+    unsigned long beamBrokenEnterMs = 0;
+    unsigned long beamClearEnterMs = 0;
     
     // Timing
     unsigned long lastSampleMs = 0;

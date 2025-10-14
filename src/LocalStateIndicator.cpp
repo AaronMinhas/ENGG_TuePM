@@ -1,134 +1,203 @@
 #include "LocalStateIndicator.h"
 #include "BridgeSystemDefs.h"
+#include "BridgeStateMachine.h"
 #include <Arduino.h>
 #include "Logger.h"
+#include <FastLED.h>
 
 /*
   Module: LocalStateIndicator
   Purpose:
-    - Show the overall system condition on a local tri-LED (R/Y/G).
-    - Subscribe to key events (traffic stopped/resumed, bridge opened/closed, faults, manual mode).
-    - Pick a colour policy:
-        * Red    = fault/safe (dominates)
-        * Yellow = in-between / action ongoing (stopped/opened/closed) or manual override active
-        * Green  = normal traffic resumed / fault cleared
-    - Publish INDICATOR_UPDATE_SUCCESS after each refresh so StateWriter/UI can log/sync.
+    - Show the overall system condition on GlowBit Stick
+    - Subscribe to STATE_CHANGED events and display bridge state with colour patterns.
+    - Colour policy:
+        * Green  = IDLE (ready)
+        * Yellow = Traffic control (stopping/resuming) - blinking
+        * Cyan   = Bridge motion (opening/closing) - blinking  
+        * Blue   = Bridge open (waiting for boat) - solid
+        * Purple = Manual mode - solid/blinking
+        * Red    = Fault/Error - solid
+    - Publish INDICATOR_UPDATE_SUCCESS after each refresh so StateWriter/UI can log and sync.
 */
-namespace {
-  // LED polarity: set to false if hardware is active-low (LOW = ON).
-  constexpr bool ACTIVE_HIGH = true;
 
-  // GPIO pins for the local tri-LED (separate from traffic lights).
-  constexpr uint8_t LED_R = 12;
-  constexpr uint8_t LED_Y = 13;
-  constexpr uint8_t LED_G = 14;
-
-  // One-time pin setup flag.
-  bool pinsReady = false;
-
-  // Local colour state for the indicator.
-  enum class Colour { Red, Yellow, Green };
-  volatile Colour currentColour = Colour::Green;
-  volatile bool inFault = false;
-  volatile bool manual  = false;
-
-  // Drive one pin ON/OFF honoring ACTIVE_HIGH policy.
-  inline void writePin(uint8_t pin, bool on){
-    digitalWrite(pin, (on == ACTIVE_HIGH) ? HIGH : LOW);
-  }
-
-  // Ensure pins are configured and driven to a safe default (all OFF).
-  void ensurePins(){
-    if (pinsReady) return;
-    pinMode(LED_R, OUTPUT); pinMode(LED_Y, OUTPUT); pinMode(LED_G, OUTPUT);
-    writePin(LED_R,false); writePin(LED_Y,false); writePin(LED_G,false);
-    pinsReady = true;
-  }
-
-  // Set the tri-LED to a specific colour (mutually exclusive).
-  void setLamp(Colour c){
-    ensurePins();
-    switch (c){
-      case Colour::Red:    writePin(LED_R,true);  writePin(LED_Y,false); writePin(LED_G,false); break;
-      case Colour::Yellow: writePin(LED_R,false); writePin(LED_Y,true);  writePin(LED_G,false); break;
-      case Colour::Green:  writePin(LED_R,false); writePin(LED_Y,false); writePin(LED_G,true ); break;
-    }
-  }
-}
-// gggg
-
-
-LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) : m_eventBus(eventBus) {
-    LOG_INFO(Logger::TAG_LOC, "Initialised");
-    using E = BridgeEvent;
-    // Unified callback for all subscribed events; adjusts local flags/colour policy and refreshes LED.
-    auto cb = [this](EventData* d){
-    if (!d) return;
-    const auto ev = d->getEventEnum();
-
-    // Fault dominates everything (including SYSTEM_SAFE_SUCCESS coming from controller halt).
-    if (ev == E::FAULT_DETECTED || ev == E::SYSTEM_SAFE_SUCCESS) {
-      inFault = true; currentColour = Colour::Red; this->setState(); return;
-    }
-    if (ev == E::FAULT_CLEARED) { inFault = false; }
-
-    // Manual override hint
-    if (ev == E::MANUAL_OVERRIDE_ACTIVATED)   manual = true;
-    if (ev == E::MANUAL_OVERRIDE_DEACTIVATED) manual = false;
-
-    // Colour selection when not in fault:
-    //  - Green  when traffic is normal (resumed/cleared)
-    //  - Yellow when traffic is stopped, bridge just opened/closed, or manual override is on
-    if (!inFault) {
-      if (ev == E::TRAFFIC_RESUMED_SUCCESS || ev == E::FAULT_CLEARED) {
-        currentColour = Colour::Green;
-      } else if (ev == E::TRAFFIC_STOPPED_SUCCESS ||
-                 ev == E::BRIDGE_OPENED_SUCCESS   ||
-                 ev == E::BRIDGE_CLOSED_SUCCESS   ||
-                 manual) {
-        currentColour = Colour::Yellow;
-      }
-    }
-    this->setState();
-  };
-
-  // Subscribe to the key events that drive the indicator policy.
-  m_eventBus.subscribe(E::TRAFFIC_STOPPED_SUCCESS, cb);
-  m_eventBus.subscribe(E::BRIDGE_OPENED_SUCCESS,   cb);
-  m_eventBus.subscribe(E::BRIDGE_CLOSED_SUCCESS,   cb);
-  m_eventBus.subscribe(E::TRAFFIC_RESUMED_SUCCESS, cb);
-  m_eventBus.subscribe(E::FAULT_DETECTED,          cb);
-  m_eventBus.subscribe(E::FAULT_CLEARED,           cb);
-  m_eventBus.subscribe(E::SYSTEM_SAFE_SUCCESS,     cb);
-  m_eventBus.subscribe(E::MANUAL_OVERRIDE_ACTIVATED,   cb);
-  m_eventBus.subscribe(E::MANUAL_OVERRIDE_DEACTIVATED, cb);
+LocalStateIndicator::LocalStateIndicator(EventBus& eventBus) 
+    : m_eventBus(eventBus), currentState(BridgeState::IDLE), isBlinking(false), 
+      lastBlinkTime(0), blinkState(false) {
+    LOG_INFO(Logger::TAG_LOC, "Initialised GlowBit Stick 1x8 indicator");
+    
+    // Initialise FastLED
+    FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+    FastLED.setBrightness(BRIGHTNESS);
+    
+    // Subscribe to STATE_CHANGED events
+    auto stateCallback = [this](EventData* eventData) {
+        if (!eventData) return;
+        
+        if (eventData->getEventEnum() == BridgeEvent::STATE_CHANGED) {
+            StateChangeData* stateData = static_cast<StateChangeData*>(eventData);
+            if (stateData) {
+                currentState = stateData->getNewState();
+                LOG_INFO(Logger::TAG_LOC, "State changed to: %s", 
+                        BridgeStateMachine::stateName(currentState));
+                setState();
+            }
+        }
+    };
+    
+    m_eventBus.subscribe(BridgeEvent::STATE_CHANGED, stateCallback);
 }
 
+void LocalStateIndicator::begin() {
+    LOG_INFO(Logger::TAG_LOC, "Starting GlowBit Stick indicator");
+    
+    // Clear all LEDs initially
+    FastLED.clear();
+    FastLED.show();
+    
+    // Run rainbow startup animation
+    rainbowStartup();
+    
+    // Set initial state
+    setState();
+}
 
 void LocalStateIndicator::setState() {
-    LOG_DEBUG(Logger::TAG_LOC, "Updating state display");
+    LOG_DEBUG(Logger::TAG_LOC, "Updating LED display for state: %s", 
+              BridgeStateMachine::stateName(currentState));
     
-    // TODO: Implement actual hardware control
-    // Update LED status indicators, displays, etc.
-    // Show current bridge state (idle, opening, open, closing, etc.)
-
-    // Drive the physical LED according to policy; Red dominates if inFault==true.
-    setLamp(inFault ? Colour::Red : currentColour);
-    // Notify that the indicator was refreshed.
+    CRGB color = getStateColor(currentState);
+    isBlinking = shouldBlink(currentState);
+    
+    if (isBlinking) {
+        setBlinkingColor(color);
+    } else {
+        setSolidColor(color);
+    }
+    
+    // Publish success event
     auto* indicatorData = new SimpleEventData(BridgeEvent::INDICATOR_UPDATE_SUCCESS);
     m_eventBus.publish(BridgeEvent::INDICATOR_UPDATE_SUCCESS, indicatorData);
-    LOG_DEBUG(Logger::TAG_LOC, "State display updated successfully");
+    LOG_DEBUG(Logger::TAG_LOC, "LED display updated successfully");
+}
+
+void LocalStateIndicator::update() {
+    // Handle blinking for states that need it
+    if (isBlinking) {
+        updateBlinking();
+    }
 }
 
 void LocalStateIndicator::halt() {
     LOG_WARN(Logger::TAG_LOC, "EMERGENCY HALT - setting display to FAULT state");
     
-    // TODO: Implement actual hardware control
-    // Set status indicators to show fault/emergency state
-    // Flash warning lights, show error messages, etc.
-
-    // Force local fault state and show Red immediately.
-    inFault = true; currentColour = Colour::Red;
-    setLamp(Colour::Red);
+    // Force fault state
+    currentState = BridgeState::FAULT;
+    setSolidColor(CRGB::Red);
     LOG_WARN(Logger::TAG_LOC, "Display set to fault state");
+}
+
+void LocalStateIndicator::setSolidColor(CRGB color) {
+    for (int i = 0; i < NUM_LEDS; i++) {
+        leds[i] = color;
+    }
+    FastLED.show();
+}
+
+void LocalStateIndicator::setBlinkingColor(CRGB color) {
+    // For blinking, we'll handle the on/off in updateBlinking()
+    // This just sets the colour when it should be on
+    if (blinkState) {
+        setSolidColor(color);
+    } else {
+        FastLED.clear();
+        FastLED.show();
+    }
+}
+
+void LocalStateIndicator::updateBlinking() {
+    unsigned long now = millis();
+    if (now - lastBlinkTime >= 500) {  // 1 Hz blink (500ms on, 500ms off)
+        blinkState = !blinkState;
+        lastBlinkTime = now;
+        
+        CRGB color = getStateColor(currentState);
+        if (blinkState) {
+            setSolidColor(color);
+        } else {
+            FastLED.clear();
+            FastLED.show();
+        }
+    }
+}
+
+void LocalStateIndicator::rainbowStartup() {
+    LOG_INFO(Logger::TAG_LOC, "Running rainbow startup animation");
+    
+    // Rainbow cycle through all 8 LEDs
+    for (int cycle = 0; cycle < 2; cycle++) {
+        for (int i = 0; i < NUM_LEDS; i++) {
+            // Clear all LEDs
+            FastLED.clear();
+            
+            // Set current LED to rainbow colour
+            leds[i] = CHSV(i * 32, 255, 255);  // Hue varies by LED position
+            FastLED.show();
+            delay(100);
+        }
+    }
+    
+    // Final clear
+    FastLED.clear();
+    FastLED.show();
+    delay(200);
+    
+    LOG_INFO(Logger::TAG_LOC, "Rainbow startup complete");
+}
+
+CRGB LocalStateIndicator::getStateColor(BridgeState state) {
+    switch (state) {
+        case BridgeState::IDLE:
+            return CRGB::Green;
+            
+        case BridgeState::STOPPING_TRAFFIC:
+        case BridgeState::RESUMING_TRAFFIC:
+            return CRGB::Yellow;
+            
+        case BridgeState::OPENING:
+        case BridgeState::CLOSING:
+            return CRGB::Cyan;
+            
+        case BridgeState::OPEN:
+            return CRGB::Blue;
+            
+        case BridgeState::FAULT:
+            return CRGB::Red;
+            
+        case BridgeState::MANUAL_MODE:
+        case BridgeState::MANUAL_OPEN:
+        case BridgeState::MANUAL_CLOSED:
+            return CRGB::Purple;
+            
+        case BridgeState::MANUAL_OPENING:
+        case BridgeState::MANUAL_CLOSING:
+            return CRGB::Purple;
+            
+        default:
+            return CRGB::White;  // Unknown state
+    }
+}
+
+bool LocalStateIndicator::shouldBlink(BridgeState state) {
+    switch (state) {
+        case BridgeState::STOPPING_TRAFFIC:
+        case BridgeState::RESUMING_TRAFFIC:
+        case BridgeState::OPENING:
+        case BridgeState::CLOSING:
+        case BridgeState::MANUAL_OPENING:
+        case BridgeState::MANUAL_CLOSING:
+            return true;
+            
+        default:
+            return false;
+    }
 }

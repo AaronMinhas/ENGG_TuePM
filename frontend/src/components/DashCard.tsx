@@ -11,10 +11,46 @@ import { DashCardProp, Status } from "../types/DashCard";
 import BridgeIcon from "./BridgeIcon";
 
 export default function DashCard(props: Readonly<DashCardProp>) {
-  const { title, description, options, updatedAt, variant, iconT, status } = props;
+  const Icon = props.iconT ? iconMap[props.iconT] : null;
 
-  const Icon = iconT ? iconMap[iconT] : null;
+  if (props.variant === "DUAL_STATE") {
+    const leftColour = getStatusColour(props.leftStatus);
+    const rightColour = getStatusColour(props.rightStatus);
 
+    return (
+      <div className="w-full h-full bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
+        <div className="flex justify-between items-center">
+          <div className="flex gap-2">
+            {Icon ? <Icon size={22} /> : null}
+            <span className="font-semibold">{props.title}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-600">{props.leftLabel}</span>
+            <CustomDropdown
+              options={props.leftOptions}
+              selected={props.leftStatus?.value ?? ""}
+              colour={leftColour}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-600">{props.rightLabel}</span>
+            <CustomDropdown
+              options={props.rightOptions}
+              selected={props.rightStatus?.value ?? ""}
+              colour={rightColour}
+            />
+          </div>
+        </div>
+
+        <span className="text-sm">{props.updatedAt}</span>
+      </div>
+    );
+  }
+
+  const { title, description, options, updatedAt, variant, status } = props;
   const statusColour = getStatusColour(status);
 
   return (

@@ -137,7 +137,11 @@ void WebSocketServer::setupBroadcastSubscriptions() {
 
     // Subscribe to the same set StateWriter uses
     eventBus_.subscribe(E::BOAT_DETECTED, sub);
+    eventBus_.subscribe(E::BOAT_DETECTED_LEFT, sub);
+    eventBus_.subscribe(E::BOAT_DETECTED_RIGHT, sub);
     eventBus_.subscribe(E::BOAT_PASSED, sub);
+    eventBus_.subscribe(E::BOAT_PASSED_LEFT, sub);
+    eventBus_.subscribe(E::BOAT_PASSED_RIGHT, sub);
     eventBus_.subscribe(E::FAULT_DETECTED, sub);
     eventBus_.subscribe(E::FAULT_CLEARED, sub);
     eventBus_.subscribe(E::MANUAL_OVERRIDE_ACTIVATED, sub);

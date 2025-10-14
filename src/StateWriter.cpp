@@ -9,7 +9,11 @@ void StateWriter::beginSubscriptions() {
     auto sub = [this](EventData* d){ this->onEvent(d); };
 
     bus_.subscribe(E::BOAT_DETECTED, sub);
+    bus_.subscribe(E::BOAT_DETECTED_LEFT, sub);
+    bus_.subscribe(E::BOAT_DETECTED_RIGHT, sub);
     bus_.subscribe(E::BOAT_PASSED, sub);
+    bus_.subscribe(E::BOAT_PASSED_LEFT, sub);
+    bus_.subscribe(E::BOAT_PASSED_RIGHT, sub);
     bus_.subscribe(E::FAULT_DETECTED, sub);
     bus_.subscribe(E::FAULT_CLEARED, sub);
     bus_.subscribe(E::MANUAL_OVERRIDE_ACTIVATED, sub);
@@ -127,6 +131,12 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
         case BridgeEvent::BOAT_DETECTED:
             pushLog("Event: BOAT_DETECTED");
             break;
+        case BridgeEvent::BOAT_DETECTED_LEFT:
+            pushLog("Event: BOAT_DETECTED_LEFT");
+            break;
+        case BridgeEvent::BOAT_DETECTED_RIGHT:
+            pushLog("Event: BOAT_DETECTED_RIGHT");
+            break;
         case BridgeEvent::TRAFFIC_STOPPED_SUCCESS:
             carLeft_ = carRight_ = "Red";
             pushLog("Success: TRAFFIC_STOPPED (car=Red,Red)");
@@ -139,6 +149,12 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             break;
         case BridgeEvent::BOAT_PASSED:
             pushLog("Event: BOAT_PASSED");
+            break;
+        case BridgeEvent::BOAT_PASSED_LEFT:
+            pushLog("Event: BOAT_PASSED_LEFT");
+            break;
+        case BridgeEvent::BOAT_PASSED_RIGHT:
+            pushLog("Event: BOAT_PASSED_RIGHT");
             break;
         case BridgeEvent::BRIDGE_CLOSED_SUCCESS:
             bridgeLockEngaged_ = true;
@@ -218,7 +234,11 @@ void StateWriter::pushLog(const String& line) {
 const char* StateWriter::eventName(BridgeEvent ev) {
   switch (ev) {
     case BridgeEvent::BOAT_DETECTED: return "BOAT_DETECTED";
+    case BridgeEvent::BOAT_DETECTED_LEFT: return "BOAT_DETECTED_LEFT";
+    case BridgeEvent::BOAT_DETECTED_RIGHT: return "BOAT_DETECTED_RIGHT";
     case BridgeEvent::BOAT_PASSED: return "BOAT_PASSED";
+    case BridgeEvent::BOAT_PASSED_LEFT: return "BOAT_PASSED_LEFT";
+    case BridgeEvent::BOAT_PASSED_RIGHT: return "BOAT_PASSED_RIGHT";
     case BridgeEvent::TRAFFIC_STOPPED_SUCCESS: return "TRAFFIC_STOPPED_SUCCESS";
     case BridgeEvent::BRIDGE_OPENED_SUCCESS: return "BRIDGE_OPENED_SUCCESS";
     case BridgeEvent::BRIDGE_CLOSED_SUCCESS: return "BRIDGE_CLOSED_SUCCESS";
