@@ -88,7 +88,8 @@ enum class CommandTarget {
     CONTROLLER,
     MOTOR_CONTROL,
     SIGNAL_CONTROL,
-    LOCAL_STATE_INDICATOR
+    LOCAL_STATE_INDICATOR,
+    SAFETY_MANAGER
 };
 
 enum class CommandAction {
