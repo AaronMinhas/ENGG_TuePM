@@ -21,10 +21,23 @@ type StateCardProps = BaseProps & {
   status?: Status;
 };
 
+type DualStateCardProps = {
+  title: string;
+  variant: "DUAL_STATE";
+  iconT?: Icon;
+  leftLabel: string;
+  leftOptions: DropdownOption[];
+  leftStatus?: Status;
+  rightLabel: string;
+  rightOptions: DropdownOption[];
+  rightStatus?: Status;
+  updatedAt?: string;
+};
+
 type MetricCardProps = BaseProps & {
   variant?: "METRIC";
   options?: never;
   status?: never;
 };
 
-export type DashCardProp = StateCardProps | MetricCardProps;
+export type DashCardProp = StateCardProps | DualStateCardProps | MetricCardProps;

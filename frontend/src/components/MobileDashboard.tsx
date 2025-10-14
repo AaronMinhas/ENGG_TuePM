@@ -87,19 +87,29 @@ export default function MobileDashboard({
       />
       <DashCard
         title="Boat Traffic"
-        variant="STATE"
+        variant="DUAL_STATE"
         iconT={Icon.BOAT}
-        options={[
-          { id: "m-bt-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
-          { id: "m-bt-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
+        leftLabel="Left"
+        leftOptions={[
+          { id: "m-bt-l-r", label: "Red", action: () => handleBoatTraffic("left", "Red") },
+          { id: "m-bt-l-g", label: "Green", action: () => handleBoatTraffic("left", "Green") },
         ]}
-        description={`L:${boatTrafficStatus?.left.value || "?"} R:${boatTrafficStatus?.right.value || "?"}`}
-        updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
-        status={
+        leftStatus={
           boatTrafficStatus?.left.value
             ? { kind: "boat", value: boatTrafficStatus.left.value }
             : undefined
         }
+        rightLabel="Right"
+        rightOptions={[
+          { id: "m-bt-r-r", label: "Red", action: () => handleBoatTraffic("right", "Red") },
+          { id: "m-bt-r-g", label: "Green", action: () => handleBoatTraffic("right", "Green") },
+        ]}
+        rightStatus={
+          boatTrafficStatus?.right.value
+            ? { kind: "boat", value: boatTrafficStatus.right.value }
+            : undefined
+        }
+        updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
       />
       <DashCard
         title="Packets Sent"
