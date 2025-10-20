@@ -19,6 +19,7 @@ type StateCardProps = BaseProps & {
   variant: "STATE";
   options: DropdownOption[];
   status?: Status;
+  disabled?: boolean;
 };
 
 type DualStateCardProps = {
@@ -32,6 +33,7 @@ type DualStateCardProps = {
   rightOptions: DropdownOption[];
   rightStatus?: Status;
   updatedAt?: string;
+  disabled?: boolean;
 };
 
 type MetricCardProps = BaseProps & {

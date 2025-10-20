@@ -3,6 +3,11 @@ import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus } 
 
 let client: ESPWebSocketClient | null = null;
 
+export interface ConsoleCommandResponse {
+  command: string;
+  handled: boolean;
+}
+
 export function getESPClient(url?: string | null) {
   if (!client && url) {
     client = new ESPWebSocketClient(url);
@@ -43,3 +48,8 @@ export const setBoatTrafficState = (side: "left" | "right", value: "Red" | "Gree
     "/traffic/boat/light",
     { side, value }
   );
+
+export const sendConsoleCommand = (command: string) =>
+  getESPClient().request<ConsoleCommandResponse, { command: string }>("SET", "/console/command", {
+    command,
+  });

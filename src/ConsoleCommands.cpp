@@ -27,51 +27,63 @@ void ConsoleCommands::poll() {
   handleStreaming();
 }
 
-void ConsoleCommands::handleCommand(const String& cmd) {
+bool ConsoleCommands::executeCommand(const String& raw) {
+  // Mirror poll() behaviour so streaming keeps ticking
+  handleStreaming();
+  String cmd = raw;
+  cmd.trim();
+  if (cmd.length() == 0) return false;
+  String lower = cmd; lower.toLowerCase();
+  LOG_DEBUG(Logger::TAG_CON, "Remote execute: '%s'", lower.c_str());
+  const bool handled = handleCommand(lower);
+  handleStreaming();
+  return handled;
+}
+
+bool ConsoleCommands::handleCommand(const String& cmd) {
   // Global simulation toggles
   if (cmd == "sim on" || cmd == "simulation on") {
     motor_.setSimulationMode(true);
     detect_.setSimulationMode(true);
     LOG_INFO(Logger::TAG_CON, "SIMULATION MODE ENABLED (motor + ultrasonic)");
-    return;
+    return true;
   }
   if (cmd == "sim off" || cmd == "simulation off") {
     motor_.setSimulationMode(false);
     detect_.setSimulationMode(false);
     LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (motor + ultrasonic)");
-    return;
+    return true;
   }
 
   // Motor commands (mirroring existing strings)
-  if (cmd == "raise" || cmd == "r") { motor_.raiseBridge(); return; }
-  if (cmd == "lower" || cmd == "l") { motor_.lowerBridge(); return; }
-  if (cmd == "halt"  || cmd == "h" || cmd == "stop") { motor_.halt(); return; }
-  if (cmd == "test motor" || cmd == "tm") { motor_.testMotor(); return; }
+  if (cmd == "raise" || cmd == "r") { motor_.raiseBridge(); return true; }
+  if (cmd == "lower" || cmd == "l") { motor_.lowerBridge(); return true; }
+  if (cmd == "halt"  || cmd == "h" || cmd == "stop") { motor_.halt(); return true; }
 
   // Test boat event commands
   if (cmd == "test boat left" || cmd == "tbl") {
     auto* eventData = new BoatEventData(BridgeEvent::BOAT_DETECTED_LEFT, BoatEventSide::LEFT);
     eventBus_.publish(BridgeEvent::BOAT_DETECTED_LEFT, eventData);
     LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat detected from LEFT side");
-    return;
+    return true;
   }
   if (cmd == "test boat right" || cmd == "tbr") {
     auto* eventData = new BoatEventData(BridgeEvent::BOAT_DETECTED_RIGHT, BoatEventSide::RIGHT);
     eventBus_.publish(BridgeEvent::BOAT_DETECTED_RIGHT, eventData);
     LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat detected from RIGHT side");
-    return;
+    return true;
   }
   if (cmd == "test boat pass left" || cmd == "tbpl") {
     auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
     eventBus_.publish(BridgeEvent::BOAT_PASSED_LEFT, eventData);
     LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat passing through LEFT side");
-    return;
+    return true;
   }
   if (cmd == "test boat pass right" || cmd == "tbpr") {
     auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
     eventBus_.publish(BridgeEvent::BOAT_PASSED_RIGHT, eventData);
     LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat passing through RIGHT side");
-    return;
+    return true;
   }
 
   // Light control commands
@@ -85,7 +97,7 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     } else {
       LOG_WARN(Logger::TAG_CON, "Invalid car light color. Use: red, yellow, green");
     }
-    return;
+    return true;
   }
   
   if (cmd.startsWith("boat light ") || cmd.startsWith("bl ")) {
@@ -109,12 +121,12 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     } else {
       LOG_WARN(Logger::TAG_CON, "Invalid boat light command. Use: 'boat light <left|right> <red|green>'");
     }
-    return;
+    return true;
   }
   
   if (cmd == "lights status" || cmd == "ls") {
     LOG_INFO(Logger::TAG_CON, "LIGHT CONTROL: Use 'status' command to see current system state");
-    return;
+    return true;
   }
 
   // Ultrasonic/detection commands
@@ -123,19 +135,19 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     const bool enable = streamMask_ != (STREAM_LEFT | STREAM_RIGHT);
     streamMask_ = enable ? (STREAM_LEFT | STREAM_RIGHT) : 0;
     LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: %s (both sensors)", enable ? "enabled" : "disabled");
-    return;
+    return true;
   }
   if (cmd == "usl") {
     const bool enable = streamMask_ != STREAM_LEFT;
     streamMask_ = enable ? STREAM_LEFT : 0;
     LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: %s (left sensor)", enable ? "enabled" : "disabled");
-    return;
+    return true;
   }
   if (cmd == "usr") {
     const bool enable = streamMask_ != STREAM_RIGHT;
     streamMask_ = enable ? STREAM_RIGHT : 0;
     LOG_INFO(Logger::TAG_DS, "ULTRA STREAM: %s (right sensor)", enable ? "enabled" : "disabled");
-    return;
+    return true;
   }
 
   if (cmd.startsWith("log level ")) {
@@ -157,13 +169,14 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     } else {
       LOG_WARN(Logger::TAG_CON, "Unknown log level '%s'", levelStr.c_str());
     }
-    return;
+    return matched;
   }
 
-  if (cmd == "status" || cmd == "mode") { printStatus(); return; }
-  if (cmd == "help" || cmd == "?") { printHelp(); return; }
+  if (cmd == "status" || cmd == "mode") { printStatus(); return true; }
+  if (cmd == "help" || cmd == "?") { printHelp(); return true; }
 
   LOG_WARN(Logger::TAG_CON, "Unknown command. Type 'help' for available commands.");
+  return false;
 }
 
 void ConsoleCommands::printHelp() {
@@ -171,7 +184,6 @@ void ConsoleCommands::printHelp() {
   Serial.println("  sim on / simulation on    - Enable simulation (motor + ultrasonic)");
   Serial.println("  sim off / simulation off  - Disable simulation (motor + ultrasonic)");
   Serial.println("  raise|r / lower|l / halt|h / stop");
-  Serial.println("  test motor|tm");
   Serial.println("  us                        - Toggle ultrasonic streaming for both sensors");
   Serial.println("  usl                       - Toggle ultrasonic streaming for left sensor only");
   Serial.println("  usr                       - Toggle ultrasonic streaming for right sensor only");

@@ -14,6 +14,7 @@ public:
 
   void begin();
   void poll();   // non-blocking; call frequently
+  bool executeCommand(const String& raw);  // exposed for remote invocation
 
 private:
   MotorControl& motor_;
@@ -21,7 +22,7 @@ private:
   EventBus& eventBus_;
   SignalControl& signalControl_;
 
-  void handleCommand(const String& cmd);
+  bool handleCommand(const String& cmd);
   void printHelp();
   void printStatus();
 

@@ -21,6 +21,7 @@ interface DesktopDashboardProps {
   readonly handleCarTraffic: (value: CarTrafficState) => void;
   readonly handleBoatTraffic: (side: "left" | "right", value: BoatTrafficState) => void;
   readonly handleFetchSystem: () => void;
+  readonly controlsDisabled?: boolean;
 }
 
 export default function DesktopDashboard({
@@ -38,6 +39,7 @@ export default function DesktopDashboard({
   handleCarTraffic,
   handleBoatTraffic,
   handleFetchSystem,
+  controlsDisabled = false,
 }: DesktopDashboardProps) {
   return (
     <div className="hidden lg:grid grid-cols-4 grid-rows-4 gap-4 lg:h-[calc(100vh-300px)] max-w-[1700px] w-full mx-4">
@@ -52,6 +54,7 @@ export default function DesktopDashboard({
         description={bridgeStatus?.state || ""}
         updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
         status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
+        disabled={controlsDisabled}
       />
       <DashCard
         title="Car Traffic"
@@ -67,6 +70,7 @@ export default function DesktopDashboard({
         status={
           carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
         }
+        disabled={controlsDisabled}
       />
       <DashCard
         title="Boat Traffic"
@@ -93,6 +97,7 @@ export default function DesktopDashboard({
             : undefined
         }
         updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
+        disabled={controlsDisabled}
       />
       <div className="row-span-4">
         <ActivitySec log={activityLog} />
@@ -127,4 +132,3 @@ export default function DesktopDashboard({
     </div>
   );
 }
-

@@ -1,5 +1,6 @@
 #include "WebSocketServer.h"
 #include "Logger.h"
+#include "ConsoleCommands.h"
 
 namespace {
   constexpr unsigned long CONNECT_TIMEOUT_MS = 15000;
@@ -8,6 +9,10 @@ namespace {
 
 WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter, CommandBus& commandBus, EventBus& eventBus) 
     : server(port), ws("/ws"), port(port), state_(stateWriter), commandBus_(commandBus), eventBus_(eventBus) {}
+
+void WebSocketServer::attachConsole(ConsoleCommands* console) {
+    console_ = console;
+}
 
 void WebSocketServer::configureWiFi(const char* ssid, const char* password) {
     ssid_ = ssid ? String(ssid) : String();
@@ -333,6 +338,25 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
             p["requestedValue"] = v;
             JsonObject current = p.createNestedObject("current");
             fillBoatTrafficStatus(current);
+        });
+    } else if (path == "/console/command") {
+        if (!console_) { sendError(client, id, path, "Console unavailable"); return; }
+        if (!payload.is<JsonObject>()) { sendError(client, id, path, "Invalid payload"); return; }
+        auto payloadObj = payload.as<JsonObject>();
+        const char* cmd = payloadObj["command"];
+        if (!cmd) { sendError(client, id, path, "Missing 'command'"); return; }
+
+        String raw = String(cmd);
+        if (raw.length() == 0) {
+            sendError(client, id, path, "Command cannot be empty");
+            return;
+        }
+
+        LOG_INFO(Logger::TAG_WS, "Console command requested via WebSocket: %s", raw.c_str());
+        const bool handled = console_->executeCommand(raw);
+        sendOk(client, id, path, [raw, handled](JsonObject p){
+            p["command"] = raw;
+            p["handled"] = handled;
         });
     } else {
         sendError(client, id, path, "Unknown SET path");

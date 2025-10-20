@@ -148,6 +148,7 @@ void setup() {
     
     // Initialise console after Serial is ready
     console.begin();
+    wss.attachConsole(&console);
     
     LOG_INFO(Logger::TAG_SYS, "=== Bridge Control System Ready ===");
     LOG_INFO(Logger::TAG_SYS, "State Machine: %s", stateMachine.getStateString().c_str());

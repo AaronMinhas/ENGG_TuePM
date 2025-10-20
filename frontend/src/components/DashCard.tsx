@@ -16,6 +16,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
   if (props.variant === "DUAL_STATE") {
     const leftColour = getStatusColour(props.leftStatus);
     const rightColour = getStatusColour(props.rightStatus);
+    const disabled = props.disabled ?? false;
 
     return (
       <div className="w-full h-full bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
@@ -33,6 +34,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
               options={props.leftOptions}
               selected={props.leftStatus?.value ?? ""}
               colour={leftColour}
+              disabled={disabled}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -41,6 +43,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
               options={props.rightOptions}
               selected={props.rightStatus?.value ?? ""}
               colour={rightColour}
+              disabled={disabled}
             />
           </div>
         </div>
@@ -52,6 +55,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
 
   const { title, description, options, updatedAt, variant, status } = props;
   const statusColour = getStatusColour(status);
+  const disabled = props.variant === "STATE" ? props.disabled ?? false : false;
 
   return (
     <div className="w-full h-full bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
@@ -64,7 +68,12 @@ export default function DashCard(props: Readonly<DashCardProp>) {
 
       <div>
         {variant === "STATE" ? (
-          <CustomDropdown options={options ?? []} selected={description} colour={statusColour} />
+          <CustomDropdown
+            options={options ?? []}
+            selected={description}
+            colour={statusColour}
+            disabled={disabled}
+          />
         ) : (
           <span className="text-2xl font-bold">{description}</span>
         )}

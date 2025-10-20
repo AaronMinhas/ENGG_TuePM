@@ -21,6 +21,7 @@ interface MobileDashboardProps {
   readonly handleCarTraffic: (value: CarTrafficState) => void;
   readonly handleBoatTraffic: (side: "left" | "right", value: BoatTrafficState) => void;
   readonly handleFetchSystem: () => void;
+  readonly controlsDisabled?: boolean;
 }
 
 export default function MobileDashboard({
@@ -38,6 +39,7 @@ export default function MobileDashboard({
   handleCarTraffic,
   handleBoatTraffic,
   handleFetchSystem,
+  controlsDisabled = false,
 }: MobileDashboardProps) {
   return (
     <div className="grid lg:hidden grid-cols-2 grid-rows-8 h-[calc(100dvh - 300px)] min-h-0 w-full gap-4 mx-4 mb-4">
@@ -60,6 +62,7 @@ export default function MobileDashboard({
         description={bridgeStatus?.state || ""}
         updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
         status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
+        disabled={controlsDisabled}
       />
       <DashCard
         title="System State"
@@ -84,6 +87,7 @@ export default function MobileDashboard({
         status={
           carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
         }
+        disabled={controlsDisabled}
       />
       <DashCard
         title="Boat Traffic"
@@ -110,6 +114,7 @@ export default function MobileDashboard({
             : undefined
         }
         updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
+        disabled={controlsDisabled}
       />
       <DashCard
         title="Packets Sent"
@@ -126,4 +131,3 @@ export default function MobileDashboard({
     </div>
   );
 }
-

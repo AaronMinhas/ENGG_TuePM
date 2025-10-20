@@ -8,4 +8,6 @@ export type CustomDropdownProps = {
   options: DropdownOption[];
   selected?: string;
   colour?: string;
+  disabled?: boolean;
+  compact?: boolean;
 };
