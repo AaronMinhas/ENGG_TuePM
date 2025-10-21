@@ -15,6 +15,7 @@
 #include "SafetyManager.h"
 #include "credentials.h"
 #include "Logger.h"
+#include "SafetyManager.h"
 
 #define LED_BUILTIN 2
 
@@ -43,7 +44,7 @@ SafetyManager safetyManager(systemEventBus, systemCommandBus);
 DetectionSystem detectionSystem(systemEventBus);
 
 // Console router
-ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl);
+ConsoleCommands console(motorControl, detectionSystem, safetyManager, systemEventBus, signalControl);
 
 // Task handles for FreeRTOS
 TaskHandle_t controlLogicTaskHandle = NULL;

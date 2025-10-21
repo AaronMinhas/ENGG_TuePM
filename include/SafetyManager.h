@@ -46,6 +46,11 @@ public:
     void setSimulationMode(bool enabled);
     bool isSimulationMode() const;
 
+    bool testFaultActive = false;
+    void triggerTestFault();        // Trigger a manual test fault
+    void clearTestFault();          // Clear test fault state
+    bool isTestFaultActive() const; // Query test fault state
+
 private:
     EventBus& m_eventBus;
     CommandBus& m_commandBus;

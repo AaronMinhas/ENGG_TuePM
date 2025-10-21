@@ -19,6 +19,7 @@ const char* const TAG_WS  = "WS";
 const char* const TAG_LOC = "LOC";
 const char* const TAG_CON = "CON";
 const char* const TAG_EVT = "EVT";
+const char* const TAG_SAFE = "SAFE";
 
 void begin(Level defaultLevel) {
   currentLevel = defaultLevel;
