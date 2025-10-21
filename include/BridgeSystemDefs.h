@@ -4,6 +4,7 @@
 // Boat Traffic Queue Timing Constants
 #define BOAT_GREEN_PERIOD_MS 45000      // 45 seconds - boats can pass during this time
 #define BOAT_PASSAGE_TIMEOUT_MS 120000  // 2 minutes - emergency timeout if no boat passes
+#define BOAT_CYCLE_COOLDOWN_MS 45000    // 45 seconds - buffer before starting a new bridge cycle
 
 // System States
 enum class BridgeState {
@@ -116,6 +117,8 @@ enum class CommandAction {
     SET_CAR_TRAFFIC,  // Set both car lights to same value
     SET_BOAT_LIGHT_LEFT,
     SET_BOAT_LIGHT_RIGHT,
+    START_BOAT_GREEN_PERIOD,
+    END_BOAT_GREEN_PERIOD,
 
     // LocalStateIndicator Actions
     SET_STATE

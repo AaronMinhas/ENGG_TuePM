@@ -4,6 +4,7 @@
 #include "CommandBus.h"
 #include "EventBus.h"
 #include <Arduino.h>
+#include <deque>
 
 class BridgeStateMachine {
 public:
@@ -37,10 +38,30 @@ private:
     void subscribeToEvents();
     
     void onEventReceived(EventData* eventData);
+    void handleBoatDetection(BoatSide side);
+    bool hasPendingBoatRequests() const { return !boatQueue_.empty(); }
+    bool canStartNewCycle() const;
+    bool cooldownElapsed() const;
+    bool maybeStartPendingCycle();
+    void startCooldown();
+    void resetCooldown();
+    void beginCycleForSide(BoatSide side);
+    void startActiveBoatWindow(BoatSide side);
+    void endActiveBoatWindow(const char* reason);
+    static String boatSideToString(BoatSide side);
 
     EventBus& m_eventBus;
     CommandBus& m_commandBus;
     BridgeState m_currentState;
     BridgeState m_previousState;
     unsigned long m_stateEntryTime;
+    std::deque<BoatSide> boatQueue_;
+    bool greenWindowActive_ = false;
+    bool cooldownActive_ = false;
+    unsigned long cooldownStartTime_ = 0;
+    uint8_t sidesServedThisOpening_ = 0;
+    bool boatPassedInWindow_ = false;
+    static constexpr uint8_t MAX_SIDES_PER_OPEN = 2;
+
+    void resetBoatCycleState(bool clearQueue);
 };

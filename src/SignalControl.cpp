@@ -256,6 +256,12 @@ void SignalControl::startBoatGreenPeriod(const String& side) {
     ensurePins();
     LOG_INFO(Logger::TAG_SC, "Starting boat green period for %s side (45 seconds)", side.c_str());
     
+    if (m_boatQueueActive) {
+        LOG_INFO(Logger::TAG_SC, "Existing boat green period active on %s - restarting for %s",
+                 m_boatQueueSide.c_str(), side.c_str());
+        endBoatGreenPeriod();
+    }
+
     // Set the specified side to green, other side to red
     if (lower(side) == "left") {
         driveBoat(BOAT_LEFT, "Green");
@@ -275,6 +281,7 @@ void SignalControl::startBoatGreenPeriod(const String& side) {
 
 void SignalControl::endBoatGreenPeriod() {
     if (!m_boatQueueActive) {
+        LOG_DEBUG(Logger::TAG_SC, "endBoatGreenPeriod() called but no active timer");
         return;  // Already inactive
     }
     

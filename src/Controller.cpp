@@ -67,6 +67,14 @@ void Controller::handleCommand(const Command& command) {
                     LOG_INFO(Logger::TAG_CMD, "Calling SignalControl::setBoatLight(right, %s)", command.data.c_str());
                     m_signalControl.setBoatLight("right", command.data);
                     break;
+                case CommandAction::START_BOAT_GREEN_PERIOD:
+                    LOG_INFO(Logger::TAG_CMD, "Calling SignalControl::startBoatGreenPeriod(%s)", command.data.c_str());
+                    m_signalControl.startBoatGreenPeriod(command.data);
+                    break;
+                case CommandAction::END_BOAT_GREEN_PERIOD:
+                    LOG_INFO(Logger::TAG_CMD, "Calling SignalControl::endBoatGreenPeriod()");
+                    m_signalControl.endBoatGreenPeriod();
+                    break;
                 default:
                     LOG_WARN(Logger::TAG_CMD, "Unknown action for SIGNAL_CONTROL");
                     break;

@@ -12,6 +12,7 @@
 #include "StateWriter.h"
 #include "DetectionSystem.h"
 #include "ConsoleCommands.h"
+#include "SafetyManager.h"
 #include "credentials.h"
 #include "Logger.h"
 
