@@ -217,7 +217,7 @@ function App() {
   };
 
   useEffect(() => {
-    const client = getESPClient(IP.AARON_4);
+    const client = getESPClient(IP.IBR);
     client.onStatus(setWsStatus);
 
     // Real-time Activity from snapshot events

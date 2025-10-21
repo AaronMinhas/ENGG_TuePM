@@ -4,11 +4,12 @@
 
 class MotorControl;
 class DetectionSystem;
+class SafetyManager;
 
 // Centralised CLI command router
 class ConsoleCommands {
 public:
-  ConsoleCommands(MotorControl& motor, DetectionSystem& detect);
+  ConsoleCommands(MotorControl& motor, DetectionSystem& detect, SafetyManager& safety); 
 
   void begin();
   void poll();   // non-blocking; call frequently
@@ -16,6 +17,7 @@ public:
 private:
   MotorControl& motor_;
   DetectionSystem& detect_;
+  SafetyManager& safety_;
 
   void handleCommand(const String& cmd);
   void printHelp();

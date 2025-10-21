@@ -23,6 +23,7 @@ extern const char* const TAG_WS;   // WiFi / WebSocket
 extern const char* const TAG_LOC;  // Local state indicator
 extern const char* const TAG_CON;  // Console interface
 extern const char* const TAG_EVT;  // Event bus
+extern const char* const TAG_SAFE; 
 
 void begin(Level defaultLevel = Level::INFO);
 void setLevel(Level level);
