@@ -34,7 +34,19 @@ void ConsoleCommands::poll()
   handleStreaming();
 }
 
-void ConsoleCommands::handleCommand(const String& cmd) {
+bool ConsoleCommands::executeCommand(const String& raw)
+{
+  String cmd = raw;
+  cmd.trim();
+  if (cmd.length() == 0)
+    return false;
+  
+  String lower = cmd;
+  lower.toLowerCase();
+  return handleCommand(lower);
+}
+
+bool ConsoleCommands::handleCommand(const String& cmd) {
   // Global simulation toggles
   if (cmd == "sim on" || cmd == "simulation on")
   {
@@ -51,21 +63,46 @@ void ConsoleCommands::handleCommand(const String& cmd) {
     return true;
   }
 
-  if (safety_.isEmergencyActive())
+  if (cmd == "test fault")
   {
-    if (cmd == "test clear" || cmd == "test off")
+    if (!safety_.isTestFaultActive())
+    {
+      safety_.triggerTestFault();
+      LOG_WARN(Logger::TAG_CON, "TEST FAULT triggered. System entering emergency mode.");
+    }
+    else
+    {
+      LOG_INFO(Logger::TAG_CON, "TEST FAULT already active.");
+    }
+    return true;
+  }
+
+  if (cmd == "test clear" || cmd == "test off")
+  {
+    if (safety_.isTestFaultActive())
     {
       safety_.clearTestFault();
       LOG_INFO(Logger::TAG_CON, "TEST FAULT cleared. System back to normal operation.");
     }
-    else if (cmd == "test status")
-    {
-      LOG_INFO(Logger::TAG_CON, "TEST FAULT STATUS: %s", safety_.isTestFaultActive() ? "ACTIVE" : "INACTIVE");
-    }
     else
     {
-      LOG_WARN(Logger::TAG_CON, "System is in EMERGENCY mode. Only 'test clear' and 'test status' are allowed.");
+      LOG_INFO(Logger::TAG_CON, "No TEST FAULT is currently active.");
     }
+    return true;
+  }
+
+  if (cmd == "test status")
+  {
+    LOG_INFO(Logger::TAG_CON, "TEST FAULT STATUS: %s", safety_.isTestFaultActive() ? "ACTIVE" : "INACTIVE");
+    return true;
+  }
+
+  if (safety_.isEmergencyActive())
+  {
+    LOG_WARN(Logger::TAG_CON, "System is in EMERGENCY mode. Use 'test clear' or 'test status'.");
+    return true;
+  }
+  
   // Motor commands (mirroring existing strings)
   if (cmd == "raise" || cmd == "r") { motor_.raiseBridge(); return true; }
   if (cmd == "lower" || cmd == "l") { motor_.lowerBridge(); return true; }
@@ -217,6 +254,9 @@ void ConsoleCommands::printHelp()
   Serial.println("  test boat right|tbr      - Simulate boat from RIGHT (exits LEFT)");
   Serial.println("  test boat pass left|tbpl - Simulate boat exiting LEFT side");
   Serial.println("  test boat pass right|tbpr - Simulate boat exiting RIGHT side");
+  Serial.println("  test fault               - Trigger manual test fault/emergency");
+  Serial.println("  test clear|test off      - Clear manual test fault");
+  Serial.println("  test status              - Show manual test fault status");
   Serial.println("  car light <colour>|cl <colour>  - Set car lights (red/yellow/green)");
   Serial.println("  boat light <side> <colour>|bl <side> <colour>  - Set boat lights (left/right, red/green)");
   Serial.println("  lights status|ls          - Show light control status");

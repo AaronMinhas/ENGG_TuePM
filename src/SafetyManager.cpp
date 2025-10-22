@@ -342,12 +342,42 @@ void SafetyManager::triggerTestFault()
 
 void SafetyManager::clearTestFault()
 {
-    if (testFaultActive)
+    if (!testFaultActive)
     {
-        testFaultActive = false;
-        m_emergencyActive = false;
-        LOG_INFO(Logger::TAG_SAFE, "TEST FAULT cleared. System can resume normal operations.");
+        LOG_INFO(Logger::TAG_SAFE, "clearTestFault() called but no TEST FAULT is active.");
+        return;
     }
+
+    testFaultActive = false;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_emergencyActive = false;
+    }
+
+    LOG_INFO(Logger::TAG_SAFE, "TEST FAULT cleared. Restoring normal operations.");
+
+    if (m_motorControl != nullptr)
+    {
+        m_motorControl->halt();
+    }
+    else
+    {
+        LOG_WARN(Logger::TAG_SAFE, "MotorControl reference null during fault clear - motor state unchanged.");
+    }
+
+    if (m_signalControl != nullptr)
+    {
+        m_signalControl->setCarTraffic("Green");
+        m_signalControl->setBoatLight("left", "Red");
+        m_signalControl->setBoatLight("right", "Red");
+    }
+    else
+    {
+        LOG_WARN(Logger::TAG_SAFE, "SignalControl reference null during fault clear - traffic lights unchanged.");
+    }
+
+    auto *faultCleared = new SimpleEventData(BridgeEvent::FAULT_CLEARED);
+    m_eventBus.publish(BridgeEvent::FAULT_CLEARED, faultCleared, EventPriority::EMERGENCY);
 }
 
 bool SafetyManager::isTestFaultActive() const

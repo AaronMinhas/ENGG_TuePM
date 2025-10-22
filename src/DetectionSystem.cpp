@@ -12,7 +12,7 @@
 
 // IR Beam Break Sensor Pin Definitions
 // Receiver output (white wire): LOW = beam broken (boat passing), HIGH = clear
-static const int BEAM_BREAK_RECEIVER_PIN = 999;  // GPIO pin for receiver output (white wire)
+static const int BEAM_BREAK_RECEIVER_PIN = 34;  // GPIO pin for receiver output (white wire)
 // Note: Transmitter (red=5V, black=GND) and Receiver (red=5V, black=GND, white=OUT)
 
 // ULTRASONIC SENSOR CONFIGURATION

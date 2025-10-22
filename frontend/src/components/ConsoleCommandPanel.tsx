@@ -71,6 +71,16 @@ export default function ConsoleCommandPanel({
     ],
   };
 
+  const safetyTestSection: CommandSection = {
+    title: "Safety Test Fault",
+    description: "Manually trigger or clear the safety test fault state.",
+    commands: [
+      { label: "Trigger Test Fault", command: "test fault" },
+      { label: "Clear Test Fault", command: "test clear" },
+      { label: "Test Fault Status", command: "test status" },
+    ],
+  };
+
   const renderCommandSection = (section: CommandSection) => (
     <div key={section.title} className="rounded-md border border-base-300 p-4 space-y-3 bg-gray-50">
       <div>
@@ -240,6 +250,7 @@ export default function ConsoleCommandPanel({
             />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {renderCommandSection(boatEventSection)}
+              {renderCommandSection(safetyTestSection)}
               <div className="rounded-md border border-base-300 p-4 space-y-3 bg-gray-50">
                 <div>
                   <p className="font-semibold">Ultrasonic Streaming</p>
