@@ -62,7 +62,14 @@ private:
     uint8_t sidesServedThisOpening_ = 0;
     bool boatPassedInWindow_ = false;
     static constexpr uint8_t MAX_SIDES_PER_OPEN = 2;
+    bool beamBreakActive_ = false;
+
+    enum class PendingLowerRequest { NONE, AUTO, MANUAL };
+    PendingLowerRequest pendingLowerRequest_ = PendingLowerRequest::NONE;
 
     void resetBoatCycleState(bool clearQueue);
     void performSystemReset();
+    bool issueLowerBridgeAuto();
+    bool issueLowerBridgeManual();
+    void processPendingLowerRequest();
 };

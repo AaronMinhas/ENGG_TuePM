@@ -54,10 +54,6 @@ private:
     int rightLastZone = -1;
     unsigned long rightCriticalEnterMs = 0;
     
-    // Boat passing tracking
-    unsigned long passedCriticalEnterMs = 0;
-    unsigned long passedClearEnterMs = 0;
-    
     // Beam break sensor tracking (for debouncing)
     bool beamBroken = false;
     unsigned long beamBrokenEnterMs = 0;

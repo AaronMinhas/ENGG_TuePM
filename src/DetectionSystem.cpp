@@ -4,11 +4,8 @@
 #include "Logger.h"
 
 // ------------------- Configuration -------------------
-// BOAT DETECTION MODE CONFIGURATION
-// Toggle between beam break sensor and ultrasonic sensors for boat passage detection
-// Set to true to use IR beam break sensor
-// Set to false to use existing ultrasonic sensors
-#define USE_BEAM_BREAK_SENSOR false
+// Boat passage clearance relies on the beam break sensor; ultrasonic sensors
+// continue providing directional detection for queue management.
 
 // IR Beam Break Sensor Pin Definitions
 // Receiver output (white wire): LOW = beam broken (boat passing), HIGH = clear
@@ -30,12 +27,9 @@ static const float NEAR_CM = 20.0f;  // 20 cm
 static const float CLOSE_CM = 10.0f; // 10 cm
 // Event threshold (critical distance) for BOAT_DETECTED/BOAT_PASSED
 static const float DETECT_THRESHOLD_CM = CLOSE_CM;
-static const float CLEAR_HYST_CM = 2.0f; // Hysteresis when clearing detection
-
 // Timing
 static const unsigned long SAMPLE_INTERVAL_MS = 100; // 10 Hz
 static const unsigned long DETECT_HOLD_MS = 800;     // must stay within detect range to trigger
-static const unsigned long PASSED_HOLD_MS = 1200;    // must clear detect range to report passed
 
 // Filtering
 static const float EMA_ALPHA = 0.5f; // 0..1, higher = less smoothing
@@ -66,9 +60,6 @@ void DetectionSystem::begin()
 
     // Clear timing values
     lastSampleMs = 0;
-    passedCriticalEnterMs = 0;
-    passedClearEnterMs = 0;
-    
     // Initialise beam break tracking
     beamBroken = false;
     beamBrokenEnterMs = 0;
@@ -83,13 +74,9 @@ void DetectionSystem::begin()
     digitalWrite(LEFT_TRIG_PIN, LOW);
     digitalWrite(RIGHT_TRIG_PIN, LOW);
     
-    // Setup beam break sensor if enabled
-    #if USE_BEAM_BREAK_SENSOR
-        pinMode(BEAM_BREAK_RECEIVER_PIN, INPUT);
-        LOG_INFO(Logger::TAG_DS, "Beam break sensor initialized on pin %d", BEAM_BREAK_RECEIVER_PIN);
-    #else
-        LOG_INFO(Logger::TAG_DS, "Using ultrasonic sensors for boat passage detection");
-    #endif
+    // Setup beam break sensor (receiver output pin only)
+    pinMode(BEAM_BREAK_RECEIVER_PIN, INPUT);
+    LOG_INFO(Logger::TAG_DS, "Beam break sensor initialised on pin %d", BEAM_BREAK_RECEIVER_PIN);
 }
 
 // Periodic update method
@@ -333,168 +320,94 @@ void DetectionSystem::checkBoatPassed()
 {
     const unsigned long now = millis();
 
-    #if USE_BEAM_BREAK_SENSOR
-        // Use beam break sensor for passage detection (direction-independent)
-        const bool currentBeamBroken = readBeamBreak();
-        
-        if (currentBeamBroken)
+    const bool currentBeamBroken = readBeamBreak();
+
+    if (currentBeamBroken)
+    {
+        // Beam is broken (boat is crossing the span)
+        if (!beamBroken)
         {
-            // Beam is broken (boat is passing through)
-            if (!beamBroken)
+            beamBroken = true;
+            beamBrokenEnterMs = now;
+            beamClearEnterMs = 0;
+
+            if (!m_simulationMode)
             {
-                // Beam just broke
-                beamBroken = true;
-                beamBrokenEnterMs = now;
-                beamClearEnterMs = 0;
-                LOG_INFO(Logger::TAG_DS, "BEAM BREAK: Boat passing through");
+                LOG_INFO(Logger::TAG_DS, "BEAM BREAK: Boat occupying channel");
+                auto* activeData = new SimpleEventData(BridgeEvent::BEAM_BREAK_ACTIVE);
+                m_eventBus.publish(BridgeEvent::BEAM_BREAK_ACTIVE, activeData, EventPriority::EMERGENCY);
             }
+        }
+        return;
+    }
+
+    // Beam currently clear
+    if (!beamBroken)
+    {
+        beamClearEnterMs = 0;
+        return;
+    }
+
+    if (beamClearEnterMs == 0)
+    {
+        beamClearEnterMs = now;
+        return;
+    }
+
+    // Require a short debounce period to ensure the hull has cleared
+    if (now - beamClearEnterMs < 100)
+    {
+        return;
+    }
+
+    beamBroken = false;
+    beamBrokenEnterMs = 0;
+    beamClearEnterMs = 0;
+
+    boatDetected = false;
+    BoatEventSide passedSide;
+    if (boatDirection == BoatDirection::LEFT_TO_RIGHT)
+    {
+        passedSide = BoatEventSide::RIGHT;
+    }
+    else if (boatDirection == BoatDirection::RIGHT_TO_LEFT)
+    {
+        passedSide = BoatEventSide::LEFT;
+    }
+    else
+    {
+        passedSide = BoatEventSide::LEFT;
+        LOG_WARN(Logger::TAG_DS, "BEAM BREAK: Boat direction unknown when clearing - defaulting to LEFT exit");
+    }
+    boatDirection = BoatDirection::NONE;
+
+    if (!m_simulationMode)
+    {
+        LOG_INFO(Logger::TAG_DS, "BEAM BREAK: Boat clear (debounced)");
+
+        auto* clearData = new SimpleEventData(BridgeEvent::BEAM_BREAK_CLEAR);
+        m_eventBus.publish(BridgeEvent::BEAM_BREAK_CLEAR, clearData, EventPriority::EMERGENCY);
+
+        // Publish side-specific event
+        if (passedSide == BoatEventSide::RIGHT)
+        {
+            auto* rightPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
+            m_eventBus.publish(BridgeEvent::BOAT_PASSED_RIGHT, rightPassedData, EventPriority::NORMAL);
         }
         else
         {
-            // Beam is clear
-            if (beamBroken)
-            {
-                // Beam was broken, now clear.. boat has passed
-                if (beamClearEnterMs == 0)
-                {
-                    beamClearEnterMs = now;
-                }
-                
-                // Debounce the clear signal (100ms)
-                if (now - beamClearEnterMs >= 100)
-                {
-                    // Boat has fully passed
-                    boatDetected = false;
-                    BoatEventSide passedSide = (boatDirection == BoatDirection::LEFT_TO_RIGHT) ? BoatEventSide::RIGHT : BoatEventSide::LEFT;
-                    boatDirection = BoatDirection::NONE;
-                    beamBroken = false;
-                    beamBrokenEnterMs = 0;
-                    beamClearEnterMs = 0;
-                    
-                    if (!m_simulationMode)
-                    {
-                        LOG_INFO(Logger::TAG_DS, "BEAM BREAK: BOAT_PASSED (debounced)");
-                        
-                        // Publish side-specific event
-                        if (passedSide == BoatEventSide::RIGHT) {
-                            auto* rightPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
-                            m_eventBus.publish(BridgeEvent::BOAT_PASSED_RIGHT, rightPassedData, EventPriority::NORMAL);
-                        } else {
-                            auto* leftPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
-                            m_eventBus.publish(BridgeEvent::BOAT_PASSED_LEFT, leftPassedData, EventPriority::NORMAL);
-                        }
-                        
-                        // Publish general event
-                        auto* passedData = new BoatEventData(BridgeEvent::BOAT_PASSED, passedSide);
-                        m_eventBus.publish(BridgeEvent::BOAT_PASSED, passedData, EventPriority::NORMAL);
-                    }
-                    else
-                    {
-                        LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - passed event suppressed");
-                    }
-                }
-            }
+            auto* leftPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
+            m_eventBus.publish(BridgeEvent::BOAT_PASSED_LEFT, leftPassedData, EventPriority::NORMAL);
         }
-    
-    #else
-        // Use ultrasonic sensors for passage detection (direction-aware)
-        
-        // Handle boat passing detection based on direction
-        if (boatDirection == BoatDirection::LEFT_TO_RIGHT)
-        {
-            // Boat initially detected on left, now check right sensor
-            const bool rightCritical = inCriticalRange(rightEmaDistanceCm);
 
-            if (rightCritical)
-            {
-                // Boat is at the right sensor, start timing
-                if (passedCriticalEnterMs == 0)
-                {
-                    passedCriticalEnterMs = now;
-                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: Boat passing through");
-                }
-                // Reset clear timer as boat is still detected
-                passedClearEnterMs = 0;
-            }
-            else if (passedCriticalEnterMs > 0)
-            {
-                // Boat was at right sensor but now has cleared it
-                if (passedClearEnterMs == 0)
-                    passedClearEnterMs = now;
-
-                // Need to wait for boat to fully clear the sensor
-                if (now - passedClearEnterMs >= PASSED_HOLD_MS)
-                {
-                    // Boat has fully passed
-                    boatDetected = false;
-                    boatDirection = BoatDirection::NONE;
-                    passedCriticalEnterMs = 0;
-                    passedClearEnterMs = 0;
-
-                    if (!m_simulationMode)
-                    {
-                        LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: BOAT_PASSED (debounced)");
-                        auto* rightPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
-                        m_eventBus.publish(BridgeEvent::BOAT_PASSED_RIGHT, rightPassedData, EventPriority::NORMAL);
-
-                        auto* passedData = new BoatEventData(BridgeEvent::BOAT_PASSED, BoatEventSide::RIGHT);
-                        m_eventBus.publish(BridgeEvent::BOAT_PASSED, passedData, EventPriority::NORMAL); // For backward compatibility
-                    }
-                    else
-                    {
-                        LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: SIM MODE - passed event suppressed");
-                    }
-                }
-            }
-        }
-        else if (boatDirection == BoatDirection::RIGHT_TO_LEFT)
-        {
-            // Boat initially detected on right, now check left sensor
-            const bool leftCritical = inCriticalRange(leftEmaDistanceCm);
-
-            if (leftCritical)
-            {
-                // Boat is at the left sensor, start timing
-                if (passedCriticalEnterMs == 0)
-                {
-                    passedCriticalEnterMs = now;
-                    LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: Boat passing through");
-                }
-                // Reset clear timer as boat is still detected
-                passedClearEnterMs = 0;
-            }
-            else if (passedCriticalEnterMs > 0)
-            {
-                // Boat was at left sensor but now has cleared it
-                if (passedClearEnterMs == 0)
-                    passedClearEnterMs = now;
-
-                // Need to wait for boat to fully clear the sensor
-                if (now - passedClearEnterMs >= PASSED_HOLD_MS)
-                {
-                    // Boat has fully passed
-                    boatDetected = false;
-                    boatDirection = BoatDirection::NONE;
-                    passedCriticalEnterMs = 0;
-                    passedClearEnterMs = 0;
-
-                    if (!m_simulationMode)
-                    {
-                        LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: BOAT_PASSED (debounced)");
-                        auto* leftPassedData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
-                        m_eventBus.publish(BridgeEvent::BOAT_PASSED_LEFT, leftPassedData, EventPriority::NORMAL);
-
-                        auto* passedData = new BoatEventData(BridgeEvent::BOAT_PASSED, BoatEventSide::LEFT);
-                        m_eventBus.publish(BridgeEvent::BOAT_PASSED, passedData, EventPriority::NORMAL); // For backward compatibility
-                    }
-                    else
-                    {
-                        LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: SIM MODE - passed event suppressed");
-                    }
-                }
-            }
-        }
-    #endif
+        // Publish general event
+        auto* passedData = new BoatEventData(BridgeEvent::BOAT_PASSED, passedSide);
+        m_eventBus.publish(BridgeEvent::BOAT_PASSED, passedData, EventPriority::NORMAL);
+    }
+    else
+    {
+        LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - passed event suppressed");
+    }
 }
 
 // Check if the system has been initialized
@@ -585,12 +498,7 @@ const char *DetectionSystem::getDirectionName() const
 
 bool DetectionSystem::readBeamBreak() const
 {
-    #if USE_BEAM_BREAK_SENSOR
-        // Read beam break sensor
-        // Output is LOW when beam is broken (boat passing), HIGH when clear
-        int reading = digitalRead(BEAM_BREAK_RECEIVER_PIN);
-        return (reading == LOW);  // true = beam broken
-    #else
-        return false;  // Not using beam break sensor
-    #endif
+    // Output is LOW when beam is broken (boat passing), HIGH when clear
+    int reading = digitalRead(BEAM_BREAK_RECEIVER_PIN);
+    return (reading == LOW);  // true = beam broken
 }

@@ -93,6 +93,16 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
         return;
     }
 
+    if (event == BridgeEvent::BEAM_BREAK_ACTIVE) {
+        // Beam break active events are handled via deferral logic in helper methods
+        return;
+    }
+
+    if (event == BridgeEvent::BEAM_BREAK_CLEAR) {
+        processPendingLowerRequest();
+        return;
+    }
+
     // Boat detection handling is global so requests can be queued during any state
     if (event == BridgeEvent::BOAT_DETECTED_LEFT || event == BridgeEvent::BOAT_DETECTED_RIGHT) {
         handleBoatDetection(lastEventSide_);
@@ -118,9 +128,8 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                 changeState(BridgeState::MANUAL_OPENING);
                 issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
             } else if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
-                LOG_INFO(Logger::TAG_FSM, "Bridge close requested → closing");
-                changeState(BridgeState::MANUAL_CLOSING);
-                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+                LOG_INFO(Logger::TAG_FSM, "Bridge close requested → attempting to close");
+                issueLowerBridgeManual();
             } else if (event == BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED) {
                 LOG_INFO(Logger::TAG_FSM, "MANUAL_TRAFFIC_STOP_REQUESTED in IDLE - issuing STOP_TRAFFIC command");
                 issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
@@ -265,10 +274,8 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
         case BridgeState::MANUAL_OPEN:
             // MANUAL_OPEN state waits for manual close command
             if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
-                LOG_INFO(Logger::TAG_FSM, "MANUAL_BRIDGE_CLOSE_REQUESTED received - issuing LOWER_BRIDGE command");
-                changeState(BridgeState::MANUAL_CLOSING);
-                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
-                LOG_INFO(Logger::TAG_FSM, "Now in MANUAL_CLOSING, waiting for BRIDGE_CLOSED_SUCCESS...");
+                LOG_INFO(Logger::TAG_FSM, "MANUAL_BRIDGE_CLOSE_REQUESTED received - attempting to lower bridge");
+                issueLowerBridgeManual();
             } else if (event == BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED) {
                 LOG_INFO(Logger::TAG_FSM, "MANUAL_TRAFFIC_STOP_REQUESTED while bridge open - issuing STOP_TRAFFIC command");
                 issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
@@ -441,10 +448,8 @@ void BridgeStateMachine::endActiveBoatWindow(const char* reason) {
                  static_cast<unsigned int>(sidesServedThisOpening_));
     }
 
-    LOG_INFO(Logger::TAG_FSM, "All scheduled boats served - lowering bridge");
-    changeState(BridgeState::OPEN);
-    issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
-    LOG_INFO(Logger::TAG_FSM, "Now waiting for BRIDGE_CLOSED_SUCCESS...");
+    LOG_INFO(Logger::TAG_FSM, "All scheduled boats served - requesting bridge lower");
+    issueLowerBridgeAuto();
 }
 
 bool BridgeStateMachine::canStartNewCycle() const {
@@ -487,6 +492,58 @@ String BridgeStateMachine::boatSideToString(BoatSide side) {
     }
 }
 
+bool BridgeStateMachine::issueLowerBridgeAuto() {
+    if (beamBreakActive_) {
+        if (pendingLowerRequest_ != PendingLowerRequest::AUTO) {
+            pendingLowerRequest_ = PendingLowerRequest::AUTO;
+            LOG_WARN(Logger::TAG_FSM, "Beam break active - deferring automatic bridge lowering until channel is clear");
+        }
+        return false;
+    }
+
+    pendingLowerRequest_ = PendingLowerRequest::NONE;
+    changeState(BridgeState::OPEN);
+    issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+    LOG_INFO(Logger::TAG_FSM, "Lowering bridge for traffic - waiting for BRIDGE_CLOSED_SUCCESS...");
+    return true;
+}
+
+bool BridgeStateMachine::issueLowerBridgeManual() {
+    if (beamBreakActive_) {
+        if (pendingLowerRequest_ != PendingLowerRequest::MANUAL) {
+            pendingLowerRequest_ = PendingLowerRequest::MANUAL;
+            LOG_WARN(Logger::TAG_FSM, "Beam break active - manual bridge closing deferred until beam clears");
+        }
+        return false;
+    }
+
+    pendingLowerRequest_ = PendingLowerRequest::NONE;
+    changeState(BridgeState::MANUAL_CLOSING);
+    issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+    LOG_INFO(Logger::TAG_FSM, "Manual bridge close in progress - waiting for BRIDGE_CLOSED_SUCCESS...");
+    return true;
+}
+
+void BridgeStateMachine::processPendingLowerRequest() {
+    if (pendingLowerRequest_ == PendingLowerRequest::NONE) {
+        LOG_DEBUG(Logger::TAG_FSM, "Beam break cleared with no pending lower request");
+        return;
+    }
+
+    PendingLowerRequest requested = pendingLowerRequest_;
+    if (requested == PendingLowerRequest::AUTO) {
+        if (!issueLowerBridgeAuto()) {
+            return;
+        }
+        LOG_INFO(Logger::TAG_FSM, "Beam break cleared - resuming automatic bridge lowering");
+    } else if (requested == PendingLowerRequest::MANUAL) {
+        if (!issueLowerBridgeManual()) {
+            return;
+        }
+        LOG_INFO(Logger::TAG_FSM, "Beam break cleared - resuming manual bridge lowering");
+    }
+}
+
 void BridgeStateMachine::resetBoatCycleState(bool clearQueue) {
     if (greenWindowActive_) {
         issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::END_BOAT_GREEN_PERIOD);
@@ -498,6 +555,8 @@ void BridgeStateMachine::resetBoatCycleState(bool clearQueue) {
     boatPassedInWindow_ = false;
     sidesServedThisOpening_ = 0;
     openingStateEntryTime_ = 0;
+    pendingLowerRequest_ = PendingLowerRequest::NONE;
+    beamBreakActive_ = false;
     if (clearQueue) {
         boatQueue_.clear();
     }
@@ -615,6 +674,8 @@ void BridgeStateMachine::subscribeToEvents() {
     m_eventBus.subscribe(BridgeEvent::BOAT_PASSED, eventCallback, EventPriority::NORMAL);
     m_eventBus.subscribe(BridgeEvent::BOAT_PASSED_LEFT, eventCallback, EventPriority::NORMAL);
     m_eventBus.subscribe(BridgeEvent::BOAT_PASSED_RIGHT, eventCallback, EventPriority::NORMAL);
+    m_eventBus.subscribe(BridgeEvent::BEAM_BREAK_ACTIVE, eventCallback, EventPriority::EMERGENCY);
+    m_eventBus.subscribe(BridgeEvent::BEAM_BREAK_CLEAR, eventCallback, EventPriority::EMERGENCY);
     
     // Subscribe to boat queue events
     m_eventBus.subscribe(BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED, eventCallback, EventPriority::NORMAL);
@@ -675,6 +736,12 @@ void BridgeStateMachine::onEventReceived(EventData* eventData) {
     
     // Extract the event type and forward to our existing handleEvent logic
     BridgeEvent event = eventData->getEventEnum();
+    if (event == BridgeEvent::BEAM_BREAK_ACTIVE) {
+        beamBreakActive_ = true;
+    } else if (event == BridgeEvent::BEAM_BREAK_CLEAR) {
+        beamBreakActive_ = false;
+    }
+
     const BoatEventSide sideInfo = eventData->getBoatEventSide();
     if (sideInfo == BoatEventSide::LEFT || sideInfo == BoatEventSide::RIGHT) {
         BoatSide parsedSide = (sideInfo == BoatEventSide::LEFT) ? BoatSide::LEFT : BoatSide::RIGHT;
