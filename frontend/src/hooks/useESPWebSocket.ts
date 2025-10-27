@@ -17,6 +17,23 @@ import {
 } from "../lib/schema";
 import { IP } from "../types/GenTypes";
 
+function parseLogLine(line: string): { sequence: number | null; message: string } {
+  const separatorIndex = line.indexOf("|");
+  if (separatorIndex === -1) {
+    return { sequence: null, message: line };
+  }
+
+  const possibleSeq = Number(line.slice(0, separatorIndex));
+  if (!Number.isFinite(possibleSeq)) {
+    return { sequence: null, message: line };
+  }
+
+  return {
+    sequence: possibleSeq,
+    message: line.slice(separatorIndex + 1).trim(),
+  };
+}
+
 interface UseESPWebSocketProps {
   setBridgeStatus: React.Dispatch<React.SetStateAction<BridgeStatus | null>>;
   setCarTrafficStatus: React.Dispatch<React.SetStateAction<CarTrafficStatus | null>>;
@@ -43,7 +60,8 @@ export function useESPWebSocket({
   vehicleTrafficStatus,
 }: UseESPWebSocketProps) {
   const lastBridgeStateRef = useRef<string | null>(null);
-  const seenLogRef = useRef<Set<string>>(new Set());
+  const lastLogSeqRef = useRef<number>(-1);
+  const legacyLogRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const client = getESPClient(IP.AARON_4);
@@ -105,22 +123,35 @@ export function useESPWebSocket({
         });
 
       if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
-        logActivity("received", `Bridge state: ${bridge.state}`);
         lastBridgeStateRef.current = bridge.state;
         incrementReceived();
       }
 
       if (logArr.length) {
-        const seen = seenLogRef.current;
+        const seenLegacy = legacyLogRef.current;
+        let highestSequence = lastLogSeqRef.current;
+
         for (const line of logArr) {
-          if (!seen.has(line)) {
-            logActivity("received", line);
-            seen.add(line);
+          const { sequence, message } = parseLogLine(line);
+          if (sequence !== null) {
+            if (sequence > highestSequence) {
+              logActivity("received", message);
+              highestSequence = sequence;
+            }
+            continue;
+          }
+
+          if (!seenLegacy.has(message)) {
+            logActivity("received", message);
+            seenLegacy.add(message);
           }
         }
-        if (seen.size > 256) {
-          seenLogRef.current = new Set(Array.from(seen).slice(-128));
+
+        if (seenLegacy.size > 512) {
+          legacyLogRef.current = new Set(Array.from(seenLegacy).slice(-256));
         }
+
+        lastLogSeqRef.current = highestSequence;
       }
     });
 

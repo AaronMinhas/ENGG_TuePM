@@ -77,7 +77,6 @@ export function useESPStatus(
       left: { ...data.left, receivedAt: Date.now() },
       right: { ...data.right, receivedAt: Date.now() },
     }));
-    logActivity("received", `Car traffic lights set to: ${value}`);
   };
 
   const handleBoatTraffic = async (side: "left" | "right", value: BoatTrafficState) => {
@@ -90,7 +89,6 @@ export function useESPStatus(
       left: { ...data.left, receivedAt: Date.now() },
       right: { ...data.right, receivedAt: Date.now() },
     });
-    logActivity("received", `Boat traffic ${side} state: ${value}`);
   };
 
   const handleResetSystem = async () => {

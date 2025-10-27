@@ -43,6 +43,7 @@ private:
 
   static constexpr size_t LOG_CAP_ = 64;
   std::vector<String> log_;
+  uint32_t logSeq_ = 0;
 
   void onEvent(EventData* data);
   void applyEvent(BridgeEvent ev, EventData* data);

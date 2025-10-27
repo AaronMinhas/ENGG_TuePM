@@ -114,10 +114,14 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             if (data && data->getEventEnum() == BridgeEvent::STATE_CHANGED) {
                 // Safe cast
                 auto* stateData = static_cast<StateChangeData*>(data);
-                bridgeState_ = stateToString(stateData->getNewState());
+                const BridgeState previousState = stateData->getPreviousState();
+                const BridgeState newState = stateData->getNewState();
+                bridgeState_ = stateToString(newState);
                 bridgeLastChangeMs_ = now;
-                pushLog(String("State: ") + stateToString(stateData->getPreviousState()) + 
-                       " -> " + stateToString(stateData->getNewState()));
+                if (newState != previousState) {
+                    pushLog(String("Bridge state changed: ") + stateToString(previousState) +
+                            " -> " + stateToString(newState));
+                }
             }
             break;
             
@@ -148,13 +152,13 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             break;
         case BridgeEvent::TRAFFIC_STOPPED_SUCCESS:
             carLeft_ = carRight_ = "Red";
-            pushLog("Success: TRAFFIC_STOPPED (car=Red,Red)");
+            pushLog(String("Traffic stopped; car lights now ") + carLeft_ + "/" + carRight_);
             break;
         case BridgeEvent::BRIDGE_OPENED_SUCCESS:
             bridgeLockEngaged_ = false;
             bridgeLastChangeMs_ = now;
             boatLeft_ = boatRight_ = "Green";
-            pushLog("Success: BRIDGE_OPENED (boat=Green,Green)");
+            pushLog(String("Bridge opened; boat lights now ") + boatLeft_ + "/" + boatRight_);
             break;
         case BridgeEvent::BOAT_PASSED:
             pushLog("Event: BOAT_PASSED");
@@ -169,14 +173,14 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             bridgeLockEngaged_ = true;
             bridgeLastChangeMs_ = now;
             boatLeft_ = boatRight_ = "Red";
-            pushLog("Success: BRIDGE_CLOSED (boat=Red,Red)");
+            pushLog(String("Bridge closed; boat lights now ") + boatLeft_ + "/" + boatRight_);
             break;
         case BridgeEvent::TRAFFIC_RESUMED_SUCCESS:
             carLeft_ = carRight_ = "Green";
-            pushLog("Success: TRAFFIC_RESUMED (car=Green,Green)");
+            pushLog(String("Traffic resumed; car lights now ") + carLeft_ + "/" + carRight_);
             break;
         case BridgeEvent::INDICATOR_UPDATE_SUCCESS:
-            pushLog("Success: INDICATOR_UPDATE");
+            pushLog("Indicator status refreshed");
             break;
         case BridgeEvent::TRAFFIC_COUNT_CHANGED: {
             if (data && data->getEventEnum() == BridgeEvent::TRAFFIC_COUNT_CHANGED) {
@@ -205,7 +209,7 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             pushLog("EMERGENCY: FAULT_DETECTED");
             break;
         case BridgeEvent::SYSTEM_SAFE_SUCCESS:
-            pushLog("Success: SYSTEM_SAFE");
+            pushLog("System reports safe status");
             break;
         case BridgeEvent::FAULT_CLEARED:
             inFault_ = false;
@@ -243,7 +247,13 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
                 } else if (lightData->getSide() == "both") {
                     carLeft_ = carRight_ = lightData->getColor();
                 }
-                pushLog("Success: CAR_LIGHT_CHANGED (" + lightData->getSide() + "=" + lightData->getColor() + ")");
+                const String& side = lightData->getSide();
+                const String& color = lightData->getColor();
+                if (side == "both") {
+                    pushLog(String("Car lights set to ") + color);
+                } else {
+                    pushLog(String("Car light (") + side + ") set to " + color);
+                }
             }
             break;
         case BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS:
@@ -255,7 +265,7 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
                 } else if (lightData->getSide() == "right") {
                     boatRight_ = lightData->getColor();
                 }
-                pushLog("Success: BOAT_LIGHT_CHANGED (" + lightData->getSide() + "=" + lightData->getColor() + ")");
+                pushLog(String("Boat light (") + lightData->getSide() + ") set to " + lightData->getColor());
             }
             break;
         default:
@@ -266,8 +276,8 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
 
 void StateWriter::pushLog(const String& line) {
     if (log_.size() >= LOG_CAP_) log_.erase(log_.begin());
-    // Remove timestamp prefix for cleaner UI logs
-    log_.push_back(line);
+    // Assign a monotonically increasing sequence so clients can deduplicate without dropping repeats
+    log_.push_back(String(logSeq_++) + "|" + line);
 }
 
 const char* StateWriter::eventName(BridgeEvent ev) {
