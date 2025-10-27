@@ -51,12 +51,16 @@ void DetectionSystem::begin()
     // Initialize left sensor
     leftEmaDistanceCm = -1.0f;
     leftLastZone = -1;
+    leftPrevZone = 3;
     leftCriticalEnterMs = 0;
+    leftApproachActive = false;
 
     // Initialize right sensor
     rightEmaDistanceCm = -1.0f;
     rightLastZone = -1;
+    rightPrevZone = 3;
     rightCriticalEnterMs = 0;
+    rightApproachActive = false;
 
     // Clear timing values
     lastSampleMs = 0;
@@ -64,6 +68,8 @@ void DetectionSystem::begin()
     beamBroken = false;
     beamBrokenEnterMs = 0;
     beamClearEnterMs = 0;
+    pendingBoatDirections.clear();
+    pendingPriorityDirection = BoatDirection::NONE;
 
     // Setup both ultrasonic sensors
     pinMode(LEFT_TRIG_PIN, OUTPUT);
@@ -97,17 +103,9 @@ void DetectionSystem::update()
     // Update zone information
     updateZones();
 
-    // Handle boat detection logic based on current state
-    if (!boatDetected)
-    {
-        // Not currently tracking a boat, look for initial detection
-        checkInitialDetection();
-    }
-    else
-    {
-        // Already tracking a boat, check for pass completion
-        checkBoatPassed();
-    }
+    // Handle detection and passage tracking
+    checkInitialDetection();
+    checkBoatPassed();
 }
 
 // Read distance using an HC-SR04 compatible approach
@@ -157,10 +155,12 @@ void DetectionSystem::updateZones()
     int leftZone = getZoneFromDistance(leftEmaDistanceCm);
     int rightZone = getZoneFromDistance(rightEmaDistanceCm);
 
+    int prevLeftZone = (leftLastZone < 0) ? 3 : leftLastZone;
+    int prevRightZone = (rightLastZone < 0) ? 3 : rightLastZone;
+
     // Log zone changes for left sensor
-    if (leftZone != leftLastZone)
+    if (leftZone != prevLeftZone)
     {
-        leftLastZone = leftZone;
         switch (leftZone)
         {
         case 0:
@@ -177,11 +177,12 @@ void DetectionSystem::updateZones()
             break;
         }
     }
+    leftPrevZone = prevLeftZone;
+    leftLastZone = leftZone;
 
     // Log zone changes for right sensor
-    if (rightZone != rightLastZone)
+    if (rightZone != prevRightZone)
     {
-        rightLastZone = rightZone;
         switch (rightZone)
         {
         case 0:
@@ -198,6 +199,8 @@ void DetectionSystem::updateZones()
             break;
         }
     }
+    rightPrevZone = prevRightZone;
+    rightLastZone = rightZone;
 }
 
 // Determine zone from distance measurement
@@ -229,90 +232,127 @@ void DetectionSystem::checkInitialDetection()
 {
     const unsigned long now = millis();
 
-    // Check left sensor first (priority doesn't matter)
-    const bool leftCritical = inCriticalRange(leftEmaDistanceCm);
-    if (leftCritical)
-    {
-        if (leftCriticalEnterMs == 0)
+    auto handleDetection = [&](const char* sensorName,
+                               BoatDirection direction,
+                               BoatEventSide eventSide,
+                               BridgeEvent sideEvent) {
+        if (!m_simulationMode)
         {
-            leftCriticalEnterMs = now;
-            // Reset right sensor timer if left is detecting
-            rightCriticalEnterMs = 0;
+            LOG_INFO(Logger::TAG_DS, "%s SENSOR: BOAT_DETECTED (debounced) - Direction: %s TO %s",
+                     sensorName,
+                     (direction == BoatDirection::LEFT_TO_RIGHT) ? "LEFT" : "RIGHT",
+                     (direction == BoatDirection::LEFT_TO_RIGHT) ? "RIGHT" : "LEFT");
+
+            auto* sideDetectedData = new BoatEventData(sideEvent, eventSide);
+            m_eventBus.publish(sideEvent, sideDetectedData, EventPriority::NORMAL);
+
+            auto* detectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED, eventSide);
+            m_eventBus.publish(BridgeEvent::BOAT_DETECTED, detectedData, EventPriority::NORMAL); // Backward compatibility
+        }
+        else
+        {
+            LOG_INFO(Logger::TAG_DS, "%s SENSOR: SIM MODE - detection suppressed", sensorName);
         }
 
-        // If left sensor has been in critical range long enough
-        if (now - leftCriticalEnterMs >= DETECT_HOLD_MS)
+        if (!boatDetected)
         {
-            // Boat detected from left, traveling right
             boatDetected = true;
-            boatDirection = BoatDirection::LEFT_TO_RIGHT;
-            leftCriticalEnterMs = 0;
-
-            if (!m_simulationMode)
+            boatDirection = direction;
+            pendingPriorityDirection = BoatDirection::NONE;
+        }
+        else
+        {
+            bool duplicate = !pendingBoatDirections.empty() && pendingBoatDirections.back() == direction;
+            if (!duplicate)
             {
-                LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: BOAT_DETECTED (debounced) - Direction: LEFT TO RIGHT");
-                // Replace this:
-                // m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL);
-                // With:
-                auto* leftDetectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED_LEFT, BoatEventSide::LEFT);
-                m_eventBus.publish(BridgeEvent::BOAT_DETECTED_LEFT, leftDetectedData, EventPriority::NORMAL);
-
-                auto* detectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED, BoatEventSide::LEFT);
-                m_eventBus.publish(BridgeEvent::BOAT_DETECTED, detectedData, EventPriority::NORMAL); // For backward compatibility
-            }
-            else
-            {
-                LOG_INFO(Logger::TAG_DS, "LEFT SENSOR: SIM MODE - detection suppressed");
+                pendingBoatDirections.push_back(direction);
+                LOG_INFO(Logger::TAG_DS, "%s SENSOR: Detection queued while boat in progress (queue length=%u)",
+                         sensorName, static_cast<unsigned int>(pendingBoatDirections.size()));
             }
         }
-    }
-    else
-    {
-        // Reset timer if not in critical range
-        leftCriticalEnterMs = 0;
-    }
+    };
 
-    // Only check right sensor if left hasn't triggered detection
-    if (!leftCritical)
-    {
-        const bool rightCritical = inCriticalRange(rightEmaDistanceCm);
-        if (rightCritical)
+    auto processSensor = [&](float distanceCm,
+                             int currentZone,
+                             int previousZone,
+                             bool& approachActive,
+                             unsigned long& criticalEnterMs,
+                             const char* sensorName,
+                             BoatDirection direction,
+                             BoatEventSide eventSide,
+                             BridgeEvent sideEvent) {
+        const bool isPriority = (pendingPriorityDirection == direction);
+
+        if (!approachActive)
         {
-            if (rightCriticalEnterMs == 0)
-                rightCriticalEnterMs = now;
-
-            // If right sensor has been in critical range long enough
-            if (now - rightCriticalEnterMs >= DETECT_HOLD_MS)
+            if ((currentZone <= 1 && previousZone >= 2) ||
+                (isPriority && currentZone <= 2 && currentZone >= 0))
             {
-                // Boat detected from right, traveling left
-                boatDetected = true;
-                boatDirection = BoatDirection::RIGHT_TO_LEFT;
-                rightCriticalEnterMs = 0;
-
-                if (!m_simulationMode)
-                {
-                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: BOAT_DETECTED (debounced) - Direction: RIGHT TO LEFT");
-                    // Replace this:
-                    // m_eventBus.publish(BridgeEvent::BOAT_DETECTED, nullptr, EventPriority::NORMAL);
-                    // With:
-                    auto* rightDetectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED_RIGHT, BoatEventSide::RIGHT);
-                    m_eventBus.publish(BridgeEvent::BOAT_DETECTED_RIGHT, rightDetectedData, EventPriority::NORMAL);
-
-                    auto* detectedData = new BoatEventData(BridgeEvent::BOAT_DETECTED, BoatEventSide::RIGHT);
-                    m_eventBus.publish(BridgeEvent::BOAT_DETECTED, detectedData, EventPriority::NORMAL); // For backward compatibility
-                }
-                else
-                {
-                    LOG_INFO(Logger::TAG_DS, "RIGHT SENSOR: SIM MODE - detection suppressed");
-                }
+                approachActive = true;
+                criticalEnterMs = 0;
             }
         }
         else
         {
-            // Reset timer if not in critical range
-            rightCriticalEnterMs = 0;
+            if (currentZone == 3)
+            {
+                approachActive = false;
+                criticalEnterMs = 0;
+            }
         }
-    }
+
+        const bool critical = inCriticalRange(distanceCm);
+        if (!critical)
+        {
+            criticalEnterMs = 0;
+            return;
+        }
+
+        if (!approachActive)
+        {
+            return;
+        }
+
+        if (criticalEnterMs == 0)
+        {
+            criticalEnterMs = now;
+        }
+
+        if (now - criticalEnterMs >= DETECT_HOLD_MS)
+        {
+            approachActive = false;
+            criticalEnterMs = 0;
+
+            if (isPriority)
+            {
+                pendingPriorityDirection = BoatDirection::NONE;
+            }
+
+            handleDetection(sensorName, direction, eventSide, sideEvent);
+        }
+    };
+
+    const int currentLeftZone = (leftLastZone < 0) ? 3 : leftLastZone;
+    processSensor(leftEmaDistanceCm,
+                  currentLeftZone,
+                  leftPrevZone,
+                  leftApproachActive,
+                  leftCriticalEnterMs,
+                  "LEFT",
+                  BoatDirection::LEFT_TO_RIGHT,
+                  BoatEventSide::LEFT,
+                  BridgeEvent::BOAT_DETECTED_LEFT);
+
+    const int currentRightZone = (rightLastZone < 0) ? 3 : rightLastZone;
+    processSensor(rightEmaDistanceCm,
+                  currentRightZone,
+                  rightPrevZone,
+                  rightApproachActive,
+                  rightCriticalEnterMs,
+                  "RIGHT",
+                  BoatDirection::RIGHT_TO_LEFT,
+                  BoatEventSide::RIGHT,
+                  BridgeEvent::BOAT_DETECTED_RIGHT);
 }
 
 // Check if boat has passed through and exited on the other side
@@ -407,6 +447,20 @@ void DetectionSystem::checkBoatPassed()
     else
     {
         LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - passed event suppressed");
+    }
+
+    if (!pendingBoatDirections.empty())
+    {
+        pendingPriorityDirection = pendingBoatDirections.front();
+        pendingBoatDirections.pop_front();
+        LOG_INFO(Logger::TAG_DS, "Queued boat detected earlier (%s to %s) - awaiting sensor reconfirmation (remaining queue length=%u)",
+                 (pendingPriorityDirection == BoatDirection::LEFT_TO_RIGHT) ? "LEFT" : "RIGHT",
+                 (pendingPriorityDirection == BoatDirection::LEFT_TO_RIGHT) ? "RIGHT" : "LEFT",
+                 static_cast<unsigned int>(pendingBoatDirections.size()));
+    }
+    else
+    {
+        pendingPriorityDirection = BoatDirection::NONE;
     }
 }
 
