@@ -16,6 +16,7 @@
 #include "credentials.h"
 #include "Logger.h"
 #include "SafetyManager.h"
+#include "TrafficCounter.h"
 
 #define LED_BUILTIN 2
 
@@ -27,6 +28,7 @@ CommandBus systemCommandBus;
 MotorControl motorControl(systemEventBus);
 SignalControl signalControl(systemEventBus);
 LocalStateIndicator localStateIndicator(systemEventBus);
+TrafficCounter trafficCounter(systemEventBus);
 
 // Main components
 Controller controller(systemEventBus, systemCommandBus, motorControl, 
@@ -76,6 +78,9 @@ void controlLogicTask(void* parameters) {
         
         // Monitor sensors (ultrasonic distance → events)
         detectionSystem.update();
+
+        // Process traffic button inputs
+        trafficCounter.update();
         
         // Update LED indicator (handles blinking)
         localStateIndicator.update();
@@ -132,12 +137,16 @@ void setup() {
     motorControl.init();
 
     LOG_INFO(Logger::TAG_SC, "Initialising Signal Control outputs...");
-    signalControl.begin();
+   signalControl.begin();
+
+    LOG_INFO(Logger::TAG_TRF, "Initialising Traffic Counter...");
+    trafficCounter.begin();
 
     LOG_INFO(Logger::TAG_CMD, "Initialising Controller...");
     controller.begin();
     
     LOG_INFO(Logger::TAG_FSM, "Initialising State Machine...");
+    stateMachine.setTrafficCounter(&trafficCounter);
     stateMachine.begin();
     
     LOG_INFO(Logger::TAG_WS, "Configuring network services...");

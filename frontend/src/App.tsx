@@ -23,6 +23,8 @@ function App() {
     setCarTrafficStatus,
     boatTrafficStatus,
     setBoatTrafficStatus,
+    vehicleTrafficStatus,
+    setVehicleTrafficStatus,
     systemStatus,
     setSystemStatus,
     handleFetchSystem,
@@ -37,11 +39,13 @@ function App() {
     setBridgeStatus,
     setCarTrafficStatus,
     setBoatTrafficStatus,
+    setVehicleTrafficStatus,
     setSystemStatus,
     incrementReceived,
     logActivity,
     carTrafficStatus,
     boatTrafficStatus,
+    vehicleTrafficStatus,
   });
 
   const [simulationMode, setSimulationMode] = useState(false);
@@ -62,6 +66,7 @@ function App() {
     bridgeStatus,
     carTrafficStatus,
     boatTrafficStatus,
+    vehicleTrafficStatus,
     systemStatus,
     packetsSent,
     packetsReceived,

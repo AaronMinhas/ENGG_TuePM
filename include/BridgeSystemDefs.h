@@ -40,6 +40,7 @@ enum class BridgeEvent {
     MANUAL_OVERRIDE_ACTIVATED,
     MANUAL_OVERRIDE_DEACTIVATED,
     SYSTEM_RESET_REQUESTED,
+    TRAFFIC_COUNT_CHANGED,
 
     // Manual Control Events (Command Mode)
     MANUAL_BRIDGE_OPEN_REQUESTED,
@@ -81,6 +82,7 @@ inline const char* bridgeEventToString(BridgeEvent event) {
         case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED: return "MANUAL_OVERRIDE_ACTIVATED";
         case BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED: return "MANUAL_OVERRIDE_DEACTIVATED";
         case BridgeEvent::SYSTEM_RESET_REQUESTED: return "SYSTEM_RESET_REQUESTED";
+        case BridgeEvent::TRAFFIC_COUNT_CHANGED: return "TRAFFIC_COUNT_CHANGED";
         case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED: return "MANUAL_BRIDGE_OPEN_REQUESTED";
         case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED: return "MANUAL_BRIDGE_CLOSE_REQUESTED";
         case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED: return "MANUAL_TRAFFIC_STOP_REQUESTED";

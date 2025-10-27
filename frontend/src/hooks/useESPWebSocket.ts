@@ -1,28 +1,46 @@
 import { useEffect, useRef, useState } from "react";
-import { getESPClient, getBridgeState, getCarTrafficState, getBoatTrafficState, getSystemState } from "../lib/api";
-import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, EventMsgT } from "../lib/schema";
+import {
+  getESPClient,
+  getBridgeState,
+  getCarTrafficState,
+  getBoatTrafficState,
+  getVehicleTrafficStatus,
+  getSystemState,
+} from "../lib/api";
+import {
+  BridgeStatus,
+  CarTrafficStatus,
+  BoatTrafficStatus,
+  SystemStatus,
+  EventMsgT,
+  VehicleTrafficStatus,
+} from "../lib/schema";
 import { IP } from "../types/GenTypes";
 
 interface UseESPWebSocketProps {
   setBridgeStatus: React.Dispatch<React.SetStateAction<BridgeStatus | null>>;
   setCarTrafficStatus: React.Dispatch<React.SetStateAction<CarTrafficStatus | null>>;
   setBoatTrafficStatus: React.Dispatch<React.SetStateAction<BoatTrafficStatus | null>>;
+  setVehicleTrafficStatus: React.Dispatch<React.SetStateAction<VehicleTrafficStatus | null>>;
   setSystemStatus: React.Dispatch<React.SetStateAction<SystemStatus | null>>;
   incrementReceived: (count?: number) => void;
   logActivity: (type: "sent" | "received", message: string) => void;
   carTrafficStatus: CarTrafficStatus | null;
   boatTrafficStatus: BoatTrafficStatus | null;
+  vehicleTrafficStatus: VehicleTrafficStatus | null;
 }
 
 export function useESPWebSocket({
   setBridgeStatus,
   setCarTrafficStatus,
   setBoatTrafficStatus,
+  setVehicleTrafficStatus,
   setSystemStatus,
   incrementReceived,
   logActivity,
   carTrafficStatus,
   boatTrafficStatus,
+  vehicleTrafficStatus,
 }: UseESPWebSocketProps) {
   const lastBridgeStateRef = useRef<string | null>(null);
   const seenLogRef = useRef<Set<string>>(new Set());
@@ -69,6 +87,15 @@ export function useESPWebSocket({
           },
         });
       }
+      if (traffic.vehicles) {
+        const leftCount = typeof traffic.vehicles.left === "number" ? traffic.vehicles.left : vehicleTrafficStatus?.left ?? 0;
+        const rightCount = typeof traffic.vehicles.right === "number" ? traffic.vehicles.right : vehicleTrafficStatus?.right ?? 0;
+        setVehicleTrafficStatus({
+          left: leftCount,
+          right: rightCount,
+          receivedAt: Date.now(),
+        });
+      }
       if (sys.connection)
         setSystemStatus({
           connection: sys.connection,
@@ -99,13 +126,14 @@ export function useESPWebSocket({
 
     const poll = async () => {
       try {
-        const [b, ct, bt, s] = await Promise.all([
+        const [b, ct, bt, s, vc] = await Promise.all([
           getBridgeState(),
           getCarTrafficState(),
           getBoatTrafficState(),
           getSystemState(),
+          getVehicleTrafficStatus(),
         ]);
-        incrementReceived(4);
+        incrementReceived(5);
         setBridgeStatus({ ...b, receivedAt: Date.now() });
         setCarTrafficStatus({
           left: { ...ct.left, receivedAt: Date.now() },
@@ -116,6 +144,7 @@ export function useESPWebSocket({
           right: { ...bt.right, receivedAt: Date.now() },
         });
         setSystemStatus({ ...s, receivedAt: Date.now() });
+        setVehicleTrafficStatus({ ...vc, receivedAt: Date.now() });
       } catch (err) {
         console.error("Poll error:", err);
       }
@@ -127,4 +156,3 @@ export function useESPWebSocket({
     return () => clearInterval(id);
   }, []);
 }
-

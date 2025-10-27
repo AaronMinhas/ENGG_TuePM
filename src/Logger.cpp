@@ -20,6 +20,7 @@ const char* const TAG_LOC = "LOC";
 const char* const TAG_CON = "CON";
 const char* const TAG_EVT = "EVT";
 const char* const TAG_SAFE = "SAFE";
+const char* const TAG_TRF = "TRF";
 
 void begin(Level defaultLevel) {
   currentLevel = defaultLevel;
@@ -63,4 +64,3 @@ void log(Level level, const char* tag, const String& message) {
 }
 
 } // namespace Logger
-

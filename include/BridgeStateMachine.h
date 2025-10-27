@@ -6,6 +6,8 @@
 #include <Arduino.h>
 #include <deque>
 
+class TrafficCounter;
+
 class BridgeStateMachine {
 public:
     BridgeStateMachine(EventBus& eventBus, CommandBus& commandBus);
@@ -14,6 +16,7 @@ public:
     void checkTimeouts();  // Check for emergency timeouts
     BridgeState getCurrentState() const;
     String getStateString() const;
+    void setTrafficCounter(TrafficCounter* counter);
     
     static const char* stateName(BridgeState s);
 
@@ -49,6 +52,10 @@ private:
     void startActiveBoatWindow(BoatSide side);
     void endActiveBoatWindow(const char* reason);
     static String boatSideToString(BoatSide side);
+    void tryBeginPendingBridgeOpening(const char* triggerSource);
+    bool shouldDelayForTrafficBeforeOpening();
+    bool shouldDelayForManualOpening();
+    bool refreshTrafficCounts();
 
     EventBus& m_eventBus;
     CommandBus& m_commandBus;
@@ -66,6 +73,13 @@ private:
 
     enum class PendingLowerRequest { NONE, AUTO, MANUAL };
     PendingLowerRequest pendingLowerRequest_ = PendingLowerRequest::NONE;
+
+    enum class PendingOpenAction { NONE, AUTOMATIC, MANUAL };
+
+    TrafficCounter* trafficCounter_ = nullptr;
+    PendingOpenAction pendingOpenAction_ = PendingOpenAction::NONE;
+    int lastKnownLeftTrafficCount_ = 0;
+    int lastKnownRightTrafficCount_ = 0;
 
     void resetBoatCycleState(bool clearQueue);
     void performSystemReset();

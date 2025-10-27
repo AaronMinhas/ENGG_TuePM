@@ -1,15 +1,25 @@
 import React from "react";
-import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, CarTrafficState, BoatTrafficState } from "../lib/schema";
+import {
+  BridgeStatus,
+  CarTrafficStatus,
+  BoatTrafficStatus,
+  SystemStatus,
+  CarTrafficState,
+  BoatTrafficState,
+  VehicleTrafficStatus,
+} from "../lib/schema";
 import { Icon, ActivityEntry } from "../types/GenTypes";
 import { timeAgo } from "../utils/timeAgo";
 import DashCard from "./DashCard";
 import BridgeCard from "./BridgeCard";
 import ActivitySec from "./ActivitySec";
+import { VehicleQueueCard } from "./VehicleQueueCard";
 
 interface MobileDashboardProps {
   readonly bridgeStatus: BridgeStatus | null;
   readonly carTrafficStatus: CarTrafficStatus | null;
   readonly boatTrafficStatus: BoatTrafficStatus | null;
+  readonly vehicleTrafficStatus: VehicleTrafficStatus | null;
   readonly systemStatus: SystemStatus | null;
   readonly packetsSent: number;
   readonly packetsReceived: number;
@@ -28,6 +38,7 @@ export default function MobileDashboard({
   bridgeStatus,
   carTrafficStatus,
   boatTrafficStatus,
+  vehicleTrafficStatus,
   systemStatus,
   packetsSent,
   packetsReceived,
@@ -116,6 +127,7 @@ export default function MobileDashboard({
         updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
         disabled={controlsDisabled}
       />
+      <VehicleQueueCard data={vehicleTrafficStatus} />
       <DashCard
         title="Packets Sent"
         iconT={Icon.PACKETS_SEND}

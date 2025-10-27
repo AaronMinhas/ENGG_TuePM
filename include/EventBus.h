@@ -131,6 +131,30 @@ public:
     BoatEventSide getBoatEventSide() const override { return side_; }
 };
 
+class TrafficCountEventData : public EventData {
+private:
+    int leftCount_;
+    int rightCount_;
+    int deltaLeft_;
+    int deltaRight_;
+
+public:
+    TrafficCountEventData(int leftCount, int rightCount,
+                          int deltaLeft, int deltaRight)
+        : leftCount_(leftCount),
+          rightCount_(rightCount),
+          deltaLeft_(deltaLeft),
+          deltaRight_(deltaRight) {}
+
+    const char* getEventType() const override { return "TRAFFIC_COUNT_CHANGED"; }
+    BridgeEvent getEventEnum() const override { return BridgeEvent::TRAFFIC_COUNT_CHANGED; }
+
+    int getLeftCount() const { return leftCount_; }
+    int getRightCount() const { return rightCount_; }
+    int getDeltaLeft() const { return deltaLeft_; }
+    int getDeltaRight() const { return deltaRight_; }
+};
+
 /**
  * Represents a subscription to an event type
  * Contains both the callback function and its priority

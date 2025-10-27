@@ -123,12 +123,16 @@ void WebSocketServer::fillBoatTrafficStatus(JsonObject obj) {
     state_.fillBoatTrafficStatus(obj);
 }
 
+void WebSocketServer::fillVehicleTrafficStatus(JsonObject obj) {
+    state_.fillVehicleTrafficStatus(obj);
+}
+
 void WebSocketServer::fillSystemStatus(JsonObject obj) {
     state_.fillSystemStatus(obj);
 }
 
 void WebSocketServer::broadcastSnapshot() {
-    StaticJsonDocument<1024> doc;
+    DynamicJsonDocument doc(1024);
     state_.buildSnapshot(doc);
     String out; serializeJson(doc, out);
     ws.textAll(out);
@@ -160,6 +164,7 @@ void WebSocketServer::setupBroadcastSubscriptions() {
     eventBus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
     eventBus_.subscribe(E::CAR_LIGHT_CHANGED_SUCCESS, sub);
     eventBus_.subscribe(E::BOAT_LIGHT_CHANGED_SUCCESS, sub);
+    eventBus_.subscribe(E::TRAFFIC_COUNT_CHANGED, sub);
 
     // Also include manual requests so frontend reflects transitional states immediately
     eventBus_.subscribe(E::MANUAL_BRIDGE_OPEN_REQUESTED, sub);
@@ -178,14 +183,14 @@ void WebSocketServer::setupBroadcastSubscriptions() {
  */
 void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, const String& path,
                              std::function<void(JsonObject)> fillPayload) {
-    StaticJsonDocument<512> doc;
+    DynamicJsonDocument doc(512);
     doc["v"] = 1;
     doc["id"] = id;
     doc["type"] = "response";
     doc["ok"] = true;
     doc["path"] = path;
     if (fillPayload) {
-        JsonObject payload = doc.createNestedObject("payload");
+        JsonObject payload = doc["payload"].to<JsonObject>();
         fillPayload(payload);
     }
     String out; serializeJson(doc, out);
@@ -198,7 +203,7 @@ void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, con
 }
 
 void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, const String& path, const String& msg) {
-    StaticJsonDocument<384> doc;
+    DynamicJsonDocument doc(384);
     doc["v"] = 1;
     doc["id"] = id;
     doc["type"] = "response";
@@ -233,6 +238,8 @@ void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, 
         sendOk(client, id, path, [this](JsonObject p){ fillCarTrafficStatus(p); });
     } else if (path == "/traffic/boat/status") {
         sendOk(client, id, path, [this](JsonObject p){ fillBoatTrafficStatus(p); });
+    } else if (path == "/traffic/vehicles/status") {
+        sendOk(client, id, path, [this](JsonObject p){ fillVehicleTrafficStatus(p); });
     } else if (path == "/system/status") {
         sendOk(client, id, path, [this](JsonObject p){ fillSystemStatus(p); });
     } else if (path == "/system/ping") {
@@ -276,7 +283,7 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         // Acknowledge request and provide current vs requested state distinctly
         sendOk(client, id, path, [this, s](JsonObject p){
             p["requestedState"] = s;
-            JsonObject current = p.createNestedObject("current");
+            JsonObject current = p["current"].to<JsonObject>();
             fillBridgeStatus(current);
         });
 
@@ -301,7 +308,7 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         // Acknowledge request and include current snapshot
         sendOk(client, id, path, [this, v](JsonObject p){
             p["requestedValue"] = v;
-            JsonObject current = p.createNestedObject("current");
+            JsonObject current = p["current"].to<JsonObject>();
             fillCarTrafficStatus(current);
         });
 
@@ -337,7 +344,7 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         sendOk(client, id, path, [this, sd, v](JsonObject p){
             p["requestedSide"] = sd;
             p["requestedValue"] = v;
-            JsonObject current = p.createNestedObject("current");
+            JsonObject current = p["current"].to<JsonObject>();
             fillBoatTrafficStatus(current);
         });
     } else if (path == "/system/reset") {
@@ -347,12 +354,14 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
 
         sendOk(client, id, path, [this](JsonObject p){
-            JsonObject bridge = p.createNestedObject("bridge");
+            JsonObject bridge = p["bridge"].to<JsonObject>();
             fillBridgeStatus(bridge);
-            JsonObject car = p.createNestedObject("carTraffic");
+            JsonObject car = p["carTraffic"].to<JsonObject>();
             fillCarTrafficStatus(car);
-            JsonObject boat = p.createNestedObject("boatTraffic");
+            JsonObject boat = p["boatTraffic"].to<JsonObject>();
             fillBoatTrafficStatus(boat);
+            JsonObject vehicles = p["trafficCounts"].to<JsonObject>();
+            fillVehicleTrafficStatus(vehicles);
         });
     } else if (path == "/console/command") {
         if (!console_) { sendError(client, id, path, "Console unavailable"); return; }
@@ -397,7 +406,7 @@ void WebSocketServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient
         return;
     }
 
-    StaticJsonDocument<768> doc;
+    DynamicJsonDocument doc(768);
     DeserializationError err = deserializeJson(doc, data, len);
     if (err) {
         LOG_WARN(Logger::TAG_WS, "JSON parse error: %s", err.c_str());

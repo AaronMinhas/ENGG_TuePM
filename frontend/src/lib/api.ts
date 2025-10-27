@@ -1,5 +1,12 @@
 import { ESPWebSocketClient } from "./wsClient";
-import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, ResetResponse } from "./schema";
+import type {
+  BridgeStatus,
+  CarTrafficStatus,
+  BoatTrafficStatus,
+  SystemStatus,
+  ResetResponse,
+  VehicleTrafficStatus,
+} from "./schema";
 
 let client: ESPWebSocketClient | null = null;
 
@@ -26,6 +33,9 @@ export const getCarTrafficState = () =>
 
 export const getBoatTrafficState = () =>
   getESPClient().request<BoatTrafficStatus>("GET", "/traffic/boat/status");
+
+export const getVehicleTrafficStatus = () =>
+  getESPClient().request<VehicleTrafficStatus>("GET", "/traffic/vehicles/status");
 
 export const getSystemState = () => getESPClient().request<SystemStatus>("GET", "/system/status");
 
