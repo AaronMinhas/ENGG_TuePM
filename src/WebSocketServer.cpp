@@ -248,6 +248,7 @@ void WebSocketServer::handleGet(AsyncWebSocketClient* client, const String& id, 
  * 
  *      /bridge/state
  *      /traffic/boat/light
+ *      /system/reset
  *
  * The information received by these endpoints will then attempt to apply this to the BridgeStateMachine.
  */
@@ -338,6 +339,20 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
             p["requestedValue"] = v;
             JsonObject current = p.createNestedObject("current");
             fillBoatTrafficStatus(current);
+        });
+    } else if (path == "/system/reset") {
+        LOG_WARN(Logger::TAG_WS, "System reset requested via WebSocket client %u", client ? client->id() : 0);
+
+        auto* resetData = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
+        eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
+
+        sendOk(client, id, path, [this](JsonObject p){
+            JsonObject bridge = p.createNestedObject("bridge");
+            fillBridgeStatus(bridge);
+            JsonObject car = p.createNestedObject("carTraffic");
+            fillCarTrafficStatus(car);
+            JsonObject boat = p.createNestedObject("boatTraffic");
+            fillBoatTrafficStatus(boat);
         });
     } else if (path == "/console/command") {
         if (!console_) { sendError(client, id, path, "Console unavailable"); return; }

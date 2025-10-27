@@ -105,6 +105,9 @@ void Controller::handleCommand(const Command& command) {
                 LOG_WARN(Logger::TAG_CMD, "All subsystems halted - system in safe state");
                 auto* safeData = new SimpleEventData(BridgeEvent::SYSTEM_SAFE_SUCCESS);
                 m_eventBus.publish(BridgeEvent::SYSTEM_SAFE_SUCCESS, safeData);
+            } else if (command.action == CommandAction::RESET_TO_IDLE_STATE) {
+                LOG_WARN(Logger::TAG_CMD, "RESET_TO_IDLE_STATE command received - restoring default operation");
+                resetToIdleState();
             } else {
                 LOG_WARN(Logger::TAG_CMD, "Unknown action for CONTROLLER");
             }
@@ -114,4 +117,16 @@ void Controller::handleCommand(const Command& command) {
             LOG_WARN(Logger::TAG_CMD, "Unknown command target: %d", static_cast<int>(command.target));
             break;
     }
+}
+
+void Controller::resetToIdleState() {
+    LOG_INFO(Logger::TAG_CMD, "Resetting motor, signals, and indicator to idle defaults");
+
+    m_motorControl.halt();
+    m_signalControl.resetToIdleState();
+
+    // Ensure bridge returns to closed position after halt
+    m_motorControl.lowerBridge();
+
+    LOG_INFO(Logger::TAG_CMD, "Idle reset sequence issued");
 }

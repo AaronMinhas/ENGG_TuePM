@@ -64,4 +64,5 @@ private:
     static constexpr uint8_t MAX_SIDES_PER_OPEN = 2;
 
     void resetBoatCycleState(bool clearQueue);
+    void performSystemReset();
 };

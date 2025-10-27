@@ -80,6 +80,10 @@ void SafetyManager::clearEmergency()
     {
         LOG_INFO(Logger::TAG_SYS, "Emergency cleared");
         m_emergencyActive = false;
+
+        LOG_INFO(Logger::TAG_SYS, "Requesting system reset following emergency clear");
+        auto *resetData = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
+        m_eventBus.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
     }
 }
 
@@ -378,6 +382,10 @@ void SafetyManager::clearTestFault()
 
     auto *faultCleared = new SimpleEventData(BridgeEvent::FAULT_CLEARED);
     m_eventBus.publish(BridgeEvent::FAULT_CLEARED, faultCleared, EventPriority::EMERGENCY);
+
+    LOG_INFO(Logger::TAG_SAFE, "Publishing system reset request after test fault clear");
+    auto *resetRequest = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
+    m_eventBus.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetRequest, EventPriority::EMERGENCY);
 }
 
 bool SafetyManager::isTestFaultActive() const

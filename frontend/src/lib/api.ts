@@ -1,5 +1,5 @@
 import { ESPWebSocketClient } from "./wsClient";
-import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus } from "./schema";
+import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, ResetResponse } from "./schema";
 
 let client: ESPWebSocketClient | null = null;
 
@@ -48,6 +48,9 @@ export const setBoatTrafficState = (side: "left" | "right", value: "Red" | "Gree
     "/traffic/boat/light",
     { side, value }
   );
+
+export const resetSystem = () =>
+  getESPClient().request<ResetResponse, Record<string, never>>("SET", "/system/reset", {});
 
 export const sendConsoleCommand = (command: string) =>
   getESPClient().request<ConsoleCommandResponse, { command: string }>("SET", "/console/command", {

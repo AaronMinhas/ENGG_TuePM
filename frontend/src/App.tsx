@@ -30,6 +30,7 @@ function App() {
     handleCloseBridge,
     handleCarTraffic,
     handleBoatTraffic,
+    handleResetSystem,
   } = useESPStatus(incrementSent, incrementReceived, logActivity);
 
   useESPWebSocket({
@@ -44,6 +45,18 @@ function App() {
   });
 
   const [simulationMode, setSimulationMode] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      await handleResetSystem();
+    } catch (err) {
+      console.error("Reset request failed:", err);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const dashboardProps = {
     bridgeStatus,
@@ -101,10 +114,10 @@ function App() {
       const message = err instanceof Error ? err.message : "Failed to send command.";
       logActivity("received", `Console error: ${message}`);
       return { ok: false, error: message };
-  } finally {
-    setSendingConsole(false);
-  }
-};
+    } finally {
+      setSendingConsole(false);
+    }
+  };
 
   const triggerSimCarTraffic = async (value: CarTrafficState) => {
     try {
@@ -128,7 +141,7 @@ function App() {
 
   return (
     <div className="bg-gray-100 min-h-screen w-full">
-      <TopNav />
+      <TopNav onReset={handleReset} resetting={resetting} />
       <div className="flex justify-center mt-4">
         <DesktopDashboard {...dashboardProps} />
         <MobileDashboard {...dashboardProps} />

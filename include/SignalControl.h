@@ -11,6 +11,7 @@ public:
     void stopTraffic();
     void resumeTraffic();
     void halt();
+    void resetToIdleState();
     void update();  // Called from main loop to process timing
     
     // Car traffic controls (both sides together)

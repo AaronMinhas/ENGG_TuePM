@@ -65,6 +65,11 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
     
     // Global event handling. Takes precedence over state specific events
     // Does not implement Safety Manager but that is low priority atp.
+    if (event == BridgeEvent::SYSTEM_RESET_REQUESTED) {
+        performSystemReset();
+        return;
+    }
+
     if (event == BridgeEvent::FAULT_DETECTED || event == BridgeEvent::BOAT_PASSAGE_TIMEOUT) {
         if (m_currentState != BridgeState::FAULT) {
             resetBoatCycleState(true);
@@ -500,6 +505,21 @@ void BridgeStateMachine::resetBoatCycleState(bool clearQueue) {
     cooldownStartTime_ = 0;
 }
 
+void BridgeStateMachine::performSystemReset() {
+    LOG_WARN(Logger::TAG_FSM, "SYSTEM_RESET_REQUESTED - forcing system back to IDLE");
+
+    resetBoatCycleState(true);
+
+    if (m_currentState != BridgeState::IDLE) {
+        changeState(BridgeState::IDLE);
+    } else {
+        auto* stateChangeData = new StateChangeData(BridgeState::IDLE, m_previousState);
+        m_eventBus.publish(BridgeEvent::STATE_CHANGED, stateChangeData);
+    }
+
+    issueCommand(CommandTarget::CONTROLLER, CommandAction::RESET_TO_IDLE_STATE);
+}
+
 void BridgeStateMachine::changeState(BridgeState newState) {
     m_previousState = m_currentState;
     m_currentState = newState;
@@ -619,6 +639,7 @@ void BridgeStateMachine::subscribeToEvents() {
     m_eventBus.subscribe(BridgeEvent::FAULT_CLEARED, eventCallback, EventPriority::EMERGENCY);
     m_eventBus.subscribe(BridgeEvent::MANUAL_OVERRIDE_ACTIVATED, eventCallback, EventPriority::EMERGENCY);
     m_eventBus.subscribe(BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED, eventCallback, EventPriority::EMERGENCY);
+    m_eventBus.subscribe(BridgeEvent::SYSTEM_RESET_REQUESTED, eventCallback, EventPriority::EMERGENCY);
     
     LOG_INFO(Logger::TAG_FSM, "Subscribed to all relevant events on EventBus");
 }

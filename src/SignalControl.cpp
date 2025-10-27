@@ -151,6 +151,27 @@ void SignalControl::halt() {
     LOG_WARN(Logger::TAG_SC, "All signals set to safe state");
 }
 
+void SignalControl::resetToIdleState() {
+    ensurePins();
+
+    LOG_INFO(Logger::TAG_SC, "Resetting signals to idle defaults (car=GREEN, boats=RED)");
+
+    m_currentOperation = Operation::NONE;
+    m_stopPhase = StopPhase::COMPLETE;
+    m_resumePhase = ResumePhase::COMPLETE;
+    m_operationStartTime = 0;
+
+    m_boatQueueActive = false;
+    m_boatQueueStartTime = 0;
+    m_boatQueueSide = "";
+
+    driveBoat(BOAT_LEFT, "Red");
+    driveBoat(BOAT_RIGHT, "Red");
+    driveCar(CAR, "Green");
+
+    LOG_INFO(Logger::TAG_SC, "Signals reset complete");
+}
+
 void SignalControl::update() {
     // Check boat queue timer first
     if (m_boatQueueActive) {

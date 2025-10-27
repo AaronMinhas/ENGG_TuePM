@@ -7,12 +7,7 @@ import {
   CarTrafficState,
   BoatTrafficState,
 } from "../lib/schema";
-import {
-  getSystemState,
-  setBridgeState,
-  setCarTrafficState,
-  setBoatTrafficState,
-} from "../lib/api";
+import { getSystemState, setBridgeState, setCarTrafficState, setBoatTrafficState, resetSystem } from "../lib/api";
 
 export function useESPStatus(
   incrementSent: () => void,
@@ -96,6 +91,58 @@ export function useESPStatus(
     logActivity("received", `Boat traffic ${side} state: ${value}`);
   };
 
+  const handleResetSystem = async () => {
+    incrementSent();
+    logActivity("sent", "Reset system to idle defaults");
+
+    try {
+      const data = await resetSystem();
+      incrementReceived();
+      const now = Date.now();
+
+      if (data.bridge) {
+        setBridgeStatus({
+          state: data.bridge.state ?? bridgeStatus?.state ?? "Closed",
+          lastChangeMs: data.bridge.lastChangeMs ?? bridgeStatus?.lastChangeMs ?? 0,
+          lockEngaged: data.bridge.lockEngaged ?? bridgeStatus?.lockEngaged ?? true,
+          receivedAt: now,
+        });
+      }
+
+      if (data.carTraffic) {
+        setCarTrafficStatus({
+          left: {
+            value: data.carTraffic.left?.value ?? carTrafficStatus?.left.value ?? "Green",
+            receivedAt: now,
+          },
+          right: {
+            value: data.carTraffic.right?.value ?? carTrafficStatus?.right.value ?? "Green",
+            receivedAt: now,
+          },
+        });
+      }
+
+      if (data.boatTraffic) {
+        setBoatTrafficStatus({
+          left: {
+            value: data.boatTraffic.left?.value ?? boatTrafficStatus?.left.value ?? "Red",
+            receivedAt: now,
+          },
+          right: {
+            value: data.boatTraffic.right?.value ?? boatTrafficStatus?.right.value ?? "Red",
+            receivedAt: now,
+          },
+        });
+      }
+
+      logActivity("received", "System reset applied. Bridge returning to idle.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Reset request failed.";
+      logActivity("received", `Reset failed: ${message}`);
+      throw err;
+    }
+  };
+
   return {
     bridgeStatus,
     setBridgeStatus,
@@ -110,6 +157,6 @@ export function useESPStatus(
     handleCloseBridge,
     handleCarTraffic,
     handleBoatTraffic,
+    handleResetSystem,
   };
 }
-

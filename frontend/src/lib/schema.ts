@@ -73,3 +73,20 @@ export interface Timed<T> {
 
 export type TimedCarTrafficStatus = Timed<CarTrafficStatus>;
 export type TimedBridgeStatus = Timed<BridgeStatus>;
+
+export interface ResetResponse {
+  bridge?: {
+    state?: string;
+    lastChangeMs?: number;
+    lockEngaged?: boolean;
+    manualMode?: boolean;
+  };
+  carTraffic?: {
+    left?: { value?: CarTrafficState };
+    right?: { value?: CarTrafficState };
+  };
+  boatTraffic?: {
+    left?: { value?: BoatTrafficState };
+    right?: { value?: BoatTrafficState };
+  };
+}

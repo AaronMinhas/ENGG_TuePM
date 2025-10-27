@@ -60,6 +60,9 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
     motor_.setSimulationMode(false);
     detect_.setSimulationMode(false);
     LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (motor + ultrasonic)");
+    auto* resetData = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
+    eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
+    LOG_INFO(Logger::TAG_CON, "System reset requested after exiting simulation mode");
     return true;
   }
 

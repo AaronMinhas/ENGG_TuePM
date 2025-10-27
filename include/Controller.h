@@ -16,6 +16,7 @@ public:
 
 private:
     void subscribeToCommands();
+    void resetToIdleState();
     
     EventBus& m_eventBus;
     CommandBus& m_commandBus;

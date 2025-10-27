@@ -27,6 +27,7 @@ void StateWriter::beginSubscriptions() {
     bus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
     bus_.subscribe(E::CAR_LIGHT_CHANGED_SUCCESS, sub);
     bus_.subscribe(E::BOAT_LIGHT_CHANGED_SUCCESS, sub);
+    bus_.subscribe(E::SYSTEM_RESET_REQUESTED, sub);
     
     // Subscribe to actual state changes from the state machine
     bus_.subscribe(E::STATE_CHANGED, sub);
@@ -184,6 +185,14 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             carLeft_ = carRight_ = "Green";
             boatLeft_ = boatRight_ = "Red";
             pushLog("Event: FAULT_CLEARED");
+            break;
+        case BridgeEvent::SYSTEM_RESET_REQUESTED:
+            inFault_ = false;
+            manualMode_ = false;
+            bridgeLockEngaged_ = true;
+            carLeft_ = carRight_ = "Green";
+            boatLeft_ = boatRight_ = "Red";
+            pushLog("Command: SYSTEM_RESET_REQUESTED -> reset to idle defaults");
             break;
         case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED:
             manualMode_ = true;
