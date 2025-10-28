@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { type LucideIcon, Car as CarIcon, Ship, Send, SendToBack, Activity, RadioTower, Users } from "lucide-react";
+import { type LucideIcon, Car as CarIcon, Ship, Send, SendToBack, Activity, RadioTower } from "lucide-react";
 import { CustomDropdown } from "./CustomDropdown";
 import { Icon as IconKey } from "../types/GenTypes";
 import { DashCardProp, Status } from "../types/DashCard";
@@ -89,7 +89,6 @@ const iconMap: Record<IconKey, LucideIcon> = {
   CAR: CarIcon,
   BOAT: Ship,
   SYSTEM: RadioTower,
-  TRAFFIC_COUNT: Users,
   PACKETS_SEND: Send,
   PACKETS_REC: SendToBack,
   ACTIVITY: Activity,

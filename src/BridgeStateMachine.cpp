@@ -1,7 +1,6 @@
 #include "BridgeStateMachine.h"
 #include <Arduino.h>
 #include "Logger.h"
-#include "TrafficCounter.h"
 
 /*
  * TLDR:
@@ -53,17 +52,6 @@ BridgeStateMachine::BridgeStateMachine(EventBus& eventBus, CommandBus& commandBu
       m_currentState(BridgeState::IDLE),
       m_previousState(BridgeState::IDLE),
       m_stateEntryTime(0) {
-}
-
-void BridgeStateMachine::setTrafficCounter(TrafficCounter* counter) {
-    trafficCounter_ = counter;
-    if (trafficCounter_ != nullptr) {
-        lastKnownLeftTrafficCount_ = trafficCounter_->getLeftCount();
-        lastKnownRightTrafficCount_ = trafficCounter_->getRightCount();
-    } else {
-        lastKnownLeftTrafficCount_ = 0;
-        lastKnownRightTrafficCount_ = 0;
-    }
 }
 
 void BridgeStateMachine::begin() {
@@ -130,26 +118,15 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
         case BridgeState::IDLE:
             // IDLE state handles trigger events and success confirmations
             if (event == BridgeEvent::TRAFFIC_STOPPED_SUCCESS) {
-                LOG_INFO(Logger::TAG_FSM, "TRAFFIC_STOPPED_SUCCESS received - evaluating traffic counts before opening");
+                LOG_INFO(Logger::TAG_FSM, "TRAFFIC_STOPPED_SUCCESS received - transitioning to STOPPING_TRAFFIC");
                 changeState(BridgeState::STOPPING_TRAFFIC);
-                pendingOpenAction_ = PendingOpenAction::AUTOMATIC;
-                if (shouldDelayForTrafficBeforeOpening()) {
-                    LOG_INFO(Logger::TAG_FSM,
-                             "Waiting for vehicle count to clear before raising bridge (left=%d, right=%d)",
-                             lastKnownLeftTrafficCount_, lastKnownRightTrafficCount_);
-                } else {
-                    tryBeginPendingBridgeOpening("traffic stop confirmed");
-                }
+                // Now issue the next command: raise bridge
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
+                LOG_INFO(Logger::TAG_FSM, "Now waiting for BRIDGE_OPENED_SUCCESS...");
             } else if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
-                LOG_INFO(Logger::TAG_FSM, "Manual bridge open requested");
-                pendingOpenAction_ = PendingOpenAction::MANUAL;
-                if (shouldDelayForManualOpening()) {
-                    LOG_INFO(Logger::TAG_FSM,
-                             "Manual open will begin once vehicle count reaches zero (left=%d, right=%d)",
-                             lastKnownLeftTrafficCount_, lastKnownRightTrafficCount_);
-                } else {
-                    tryBeginPendingBridgeOpening("manual request");
-                }
+                LOG_INFO(Logger::TAG_FSM, "Bridge open requested → opening");
+                changeState(BridgeState::MANUAL_OPENING);
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
             } else if (event == BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED) {
                 LOG_INFO(Logger::TAG_FSM, "Bridge close requested → attempting to close");
                 issueLowerBridgeManual();
@@ -567,82 +544,6 @@ void BridgeStateMachine::processPendingLowerRequest() {
     }
 }
 
-bool BridgeStateMachine::refreshTrafficCounts() {
-    if (trafficCounter_ == nullptr) {
-        lastKnownLeftTrafficCount_ = 0;
-        lastKnownRightTrafficCount_ = 0;
-        return false;
-    }
-    lastKnownLeftTrafficCount_ = trafficCounter_->getLeftCount();
-    lastKnownRightTrafficCount_ = trafficCounter_->getRightCount();
-    return true;
-}
-
-bool BridgeStateMachine::shouldDelayForTrafficBeforeOpening() {
-    if (!refreshTrafficCounts()) {
-        return false;
-    }
-
-    if ((lastKnownLeftTrafficCount_ + lastKnownRightTrafficCount_) == 0) {
-        return false;
-    }
-
-    LOG_WARN(Logger::TAG_FSM,
-             "Automatic opening delayed - vehicles detected near span (left=%d, right=%d)",
-             lastKnownLeftTrafficCount_, lastKnownRightTrafficCount_);
-    return true;
-}
-
-bool BridgeStateMachine::shouldDelayForManualOpening() {
-    if (!refreshTrafficCounts()) {
-        return false;
-    }
-
-    if ((lastKnownLeftTrafficCount_ + lastKnownRightTrafficCount_) == 0) {
-        return false;
-    }
-
-    LOG_WARN(Logger::TAG_FSM,
-             "Manual opening blocked - vehicles detected near span (left=%d, right=%d)",
-             lastKnownLeftTrafficCount_, lastKnownRightTrafficCount_);
-    return true;
-}
-
-void BridgeStateMachine::tryBeginPendingBridgeOpening(const char* triggerSource) {
-    if (pendingOpenAction_ == PendingOpenAction::NONE) {
-        return;
-    }
-
-    const bool haveCounters = refreshTrafficCounts();
-    if (haveCounters && (lastKnownLeftTrafficCount_ + lastKnownRightTrafficCount_) > 0) {
-        LOG_DEBUG(Logger::TAG_FSM,
-                  "Still waiting for zero vehicle count before opening (left=%d, right=%d)",
-                  lastKnownLeftTrafficCount_, lastKnownRightTrafficCount_);
-        return;
-    }
-
-    switch (pendingOpenAction_) {
-        case PendingOpenAction::AUTOMATIC:
-            LOG_INFO(Logger::TAG_FSM,
-                     "Traffic clear (%s) - raising bridge for queued boats", triggerSource);
-            issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
-            LOG_INFO(Logger::TAG_FSM, "Now waiting for BRIDGE_OPENED_SUCCESS...");
-            break;
-        case PendingOpenAction::MANUAL:
-            LOG_INFO(Logger::TAG_FSM,
-                     "Traffic clear (%s) - starting manual bridge opening", triggerSource);
-            changeState(BridgeState::MANUAL_OPENING);
-            issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
-            LOG_INFO(Logger::TAG_FSM, "Manual opening in progress - waiting for BRIDGE_OPENED_SUCCESS...");
-            break;
-        case PendingOpenAction::NONE:
-        default:
-            break;
-    }
-
-    pendingOpenAction_ = PendingOpenAction::NONE;
-}
-
 void BridgeStateMachine::resetBoatCycleState(bool clearQueue) {
     if (greenWindowActive_) {
         issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::END_BOAT_GREEN_PERIOD);
@@ -661,14 +562,12 @@ void BridgeStateMachine::resetBoatCycleState(bool clearQueue) {
     }
     cooldownActive_ = false;
     cooldownStartTime_ = 0;
-    pendingOpenAction_ = PendingOpenAction::NONE;
 }
 
 void BridgeStateMachine::performSystemReset() {
     LOG_WARN(Logger::TAG_FSM, "SYSTEM_RESET_REQUESTED - forcing system back to IDLE");
 
     resetBoatCycleState(true);
-    pendingOpenAction_ = PendingOpenAction::NONE;
 
     if (m_currentState != BridgeState::IDLE) {
         changeState(BridgeState::IDLE);
@@ -802,8 +701,7 @@ void BridgeStateMachine::subscribeToEvents() {
     m_eventBus.subscribe(BridgeEvent::MANUAL_OVERRIDE_ACTIVATED, eventCallback, EventPriority::EMERGENCY);
     m_eventBus.subscribe(BridgeEvent::MANUAL_OVERRIDE_DEACTIVATED, eventCallback, EventPriority::EMERGENCY);
     m_eventBus.subscribe(BridgeEvent::SYSTEM_RESET_REQUESTED, eventCallback, EventPriority::EMERGENCY);
-    m_eventBus.subscribe(BridgeEvent::TRAFFIC_COUNT_CHANGED, eventCallback, EventPriority::NORMAL);
-
+    
     LOG_INFO(Logger::TAG_FSM, "Subscribed to all relevant events on EventBus");
 }
 
@@ -842,16 +740,6 @@ void BridgeStateMachine::onEventReceived(EventData* eventData) {
         beamBreakActive_ = true;
     } else if (event == BridgeEvent::BEAM_BREAK_CLEAR) {
         beamBreakActive_ = false;
-    } else if (event == BridgeEvent::TRAFFIC_COUNT_CHANGED) {
-        auto* trafficData = static_cast<TrafficCountEventData*>(eventData);
-        if (trafficData != nullptr) {
-            lastKnownLeftTrafficCount_ = trafficData->getLeftCount();
-            lastKnownRightTrafficCount_ = trafficData->getRightCount();
-            if (pendingOpenAction_ != PendingOpenAction::NONE &&
-                (trafficData->getLeftCount() + trafficData->getRightCount()) == 0) {
-                tryBeginPendingBridgeOpening("vehicle count cleared");
-            }
-        }
     }
 
     const BoatEventSide sideInfo = eventData->getBoatEventSide();

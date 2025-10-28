@@ -60,7 +60,6 @@ private:
     void fillBridgeStatus(JsonObject obj);
     void fillCarTrafficStatus(JsonObject obj);
     void fillBoatTrafficStatus(JsonObject obj);
-    void fillVehicleTrafficStatus(JsonObject obj);
     void fillSystemStatus(JsonObject obj);
 
     void broadcastSnapshot();

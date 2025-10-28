@@ -58,12 +58,6 @@ export interface BoatTrafficStatus {
   right: TrafficLightStatus<BoatTrafficState>;
 }
 
-export interface VehicleTrafficStatus {
-  left: number;
-  right: number;
-  receivedAt?: number;
-}
-
 export type SystemState = "Connected" | "Connecting" | "Disconnected";
 export interface SystemStatus {
   connection: SystemState;
@@ -94,9 +88,5 @@ export interface ResetResponse {
   boatTraffic?: {
     left?: { value?: BoatTrafficState };
     right?: { value?: BoatTrafficState };
-  };
-  trafficCounts?: {
-    left?: number;
-    right?: number;
   };
 }

@@ -1,25 +1,15 @@
 import React from "react";
-import {
-  BridgeStatus,
-  CarTrafficStatus,
-  BoatTrafficStatus,
-  SystemStatus,
-  CarTrafficState,
-  BoatTrafficState,
-  VehicleTrafficStatus,
-} from "../lib/schema";
+import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, CarTrafficState, BoatTrafficState } from "../lib/schema";
 import { Icon, ActivityEntry } from "../types/GenTypes";
 import { timeAgo } from "../utils/timeAgo";
 import DashCard from "./DashCard";
 import BridgeCard from "./BridgeCard";
 import ActivitySec from "./ActivitySec";
-import { VehicleQueueCard } from "./VehicleQueueCard";
 
 interface DesktopDashboardProps {
   readonly bridgeStatus: BridgeStatus | null;
   readonly carTrafficStatus: CarTrafficStatus | null;
   readonly boatTrafficStatus: BoatTrafficStatus | null;
-  readonly vehicleTrafficStatus: VehicleTrafficStatus | null;
   readonly systemStatus: SystemStatus | null;
   readonly packetsSent: number;
   readonly packetsReceived: number;
@@ -38,7 +28,6 @@ export default function DesktopDashboard({
   bridgeStatus,
   carTrafficStatus,
   boatTrafficStatus,
-  vehicleTrafficStatus,
   systemStatus,
   packetsSent,
   packetsReceived,
@@ -110,7 +99,6 @@ export default function DesktopDashboard({
         updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
         disabled={controlsDisabled}
       />
-      <VehicleQueueCard data={vehicleTrafficStatus} />
       <div className="row-span-4">
         <ActivitySec log={activityLog} />
       </div>

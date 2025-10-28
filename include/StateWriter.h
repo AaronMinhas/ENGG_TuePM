@@ -15,7 +15,6 @@ public:
   void fillBridgeStatus(JsonObject obj) const;
   void fillCarTrafficStatus(JsonObject obj) const;
   void fillBoatTrafficStatus(JsonObject obj) const;
-  void fillVehicleTrafficStatus(JsonObject obj) const;
   void fillSystemStatus(JsonObject obj) const;
 
   void buildSnapshot(JsonDocument& out) const;
@@ -35,8 +34,6 @@ private:
   
   String boatLeft_ = "Red";
   String boatRight_ = "Red";
-  int trafficLeftCount_ = 0;
-  int trafficRightCount_ = 0;
 
   bool inFault_ = false;
   bool manualMode_ = false;

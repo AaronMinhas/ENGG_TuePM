@@ -24,7 +24,6 @@ extern const char* const TAG_LOC;  // Local state indicator
 extern const char* const TAG_CON;  // Console interface
 extern const char* const TAG_EVT;  // Event bus
 extern const char* const TAG_SAFE; 
-extern const char* const TAG_TRF;  // Traffic counter / sensors
 
 void begin(Level defaultLevel = Level::INFO);
 void setLevel(Level level);
@@ -40,3 +39,4 @@ void log(Level level, const char* tag, const String& message);
 #define LOG_INFO(tag, fmt, ...)  Logger::logf(Logger::Level::INFO,  tag, fmt, ##__VA_ARGS__)
 #define LOG_WARN(tag, fmt, ...)  Logger::logf(Logger::Level::WARN,  tag, fmt, ##__VA_ARGS__)
 #define LOG_ERROR(tag, fmt, ...) Logger::logf(Logger::Level::ERROR, tag, fmt, ##__VA_ARGS__)
+

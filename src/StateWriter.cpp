@@ -28,7 +28,6 @@ void StateWriter::beginSubscriptions() {
     bus_.subscribe(E::CAR_LIGHT_CHANGED_SUCCESS, sub);
     bus_.subscribe(E::BOAT_LIGHT_CHANGED_SUCCESS, sub);
     bus_.subscribe(E::SYSTEM_RESET_REQUESTED, sub);
-    bus_.subscribe(E::TRAFFIC_COUNT_CHANGED, sub);
     
     // Subscribe to actual state changes from the state machine
     bus_.subscribe(E::STATE_CHANGED, sub);
@@ -43,24 +42,18 @@ void StateWriter::fillBridgeStatus(JsonObject obj) const {
 
 void StateWriter::fillCarTrafficStatus(JsonObject obj) const {
     std::lock_guard<std::mutex> lk(mu_);
-    JsonObject left = obj["left"].to<JsonObject>();
+    auto left = obj.createNestedObject("left");
     left["value"] = carLeft_;
-    JsonObject right = obj["right"].to<JsonObject>();
+    auto right = obj.createNestedObject("right");
     right["value"] = carRight_;
 }
 
 void StateWriter::fillBoatTrafficStatus(JsonObject obj) const {
     std::lock_guard<std::mutex> lk(mu_);
-    JsonObject left = obj["left"].to<JsonObject>();
+    auto left = obj.createNestedObject("left");
     left["value"] = boatLeft_;
-    JsonObject right = obj["right"].to<JsonObject>();
+    auto right = obj.createNestedObject("right");
     right["value"] = boatRight_;
-}
-
-void StateWriter::fillVehicleTrafficStatus(JsonObject obj) const {
-    std::lock_guard<std::mutex> lk(mu_);
-    obj["left"] = trafficLeftCount_;
-    obj["right"] = trafficRightCount_;
 }
 
 void StateWriter::fillSystemStatus(JsonObject obj) const {
@@ -73,21 +66,20 @@ void StateWriter::buildSnapshot(JsonDocument& out) const {
     out["v"] = 1;
     out["type"] = "event";
     out["path"] = "/system/snapshot";
-    JsonObject p = out["payload"].to<JsonObject>();
+    JsonObject p = out.createNestedObject("payload");
 
     // sections
-    JsonObject bridge = p["bridge"].to<JsonObject>();
+    JsonObject bridge = p.createNestedObject("bridge");
     fillBridgeStatus(bridge);
 
-    JsonObject traffic = p["traffic"].to<JsonObject>();
-    fillCarTrafficStatus(traffic["car"].to<JsonObject>());
-    fillBoatTrafficStatus(traffic["boat"].to<JsonObject>());
-    fillVehicleTrafficStatus(traffic["vehicles"].to<JsonObject>());
+    JsonObject traffic = p.createNestedObject("traffic");
+    fillCarTrafficStatus(traffic.createNestedObject("car"));
+    fillBoatTrafficStatus(traffic.createNestedObject("boat"));
 
-    JsonObject system = p["system"].to<JsonObject>();
+    JsonObject system = p.createNestedObject("system");
     fillSystemStatus(system);
 
-    JsonArray logArr = p["log"].to<JsonArray>();
+    JsonArray logArr = p.createNestedArray("log");
     {
         std::lock_guard<std::mutex> lk(mu_);
         for (const auto& s : log_) logArr.add(s);
@@ -182,26 +174,6 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
         case BridgeEvent::INDICATOR_UPDATE_SUCCESS:
             pushLog("Indicator status refreshed");
             break;
-        case BridgeEvent::TRAFFIC_COUNT_CHANGED: {
-            if (data && data->getEventEnum() == BridgeEvent::TRAFFIC_COUNT_CHANGED) {
-                auto* countData = static_cast<TrafficCountEventData*>(data);
-                trafficLeftCount_ = countData->getLeftCount();
-                trafficRightCount_ = countData->getRightCount();
-                const int deltaLeft = countData->getDeltaLeft();
-                const int deltaRight = countData->getDeltaRight();
-                auto formatDelta = [](int delta) -> String {
-                    String result;
-                    if (delta >= 0) {
-                        result += "+";
-                    }
-                    result += String(delta);
-                    return result;
-                };
-                pushLog(String("Traffic count: L=") + trafficLeftCount_ + " (" + formatDelta(deltaLeft) +
-                        "), R=" + trafficRightCount_ + " (" + formatDelta(deltaRight) + ")");
-            }
-            break;
-        }
         case BridgeEvent::FAULT_DETECTED:
             inFault_ = true;
             carLeft_ = carRight_ = "Red";
@@ -224,8 +196,6 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             bridgeLockEngaged_ = true;
             carLeft_ = carRight_ = "Green";
             boatLeft_ = boatRight_ = "Red";
-            trafficLeftCount_ = 0;
-            trafficRightCount_ = 0;
             pushLog("Command: SYSTEM_RESET_REQUESTED -> reset to idle defaults");
             break;
         case BridgeEvent::MANUAL_OVERRIDE_ACTIVATED:

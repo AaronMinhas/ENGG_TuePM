@@ -6,7 +6,6 @@ import {
   SystemStatus,
   CarTrafficState,
   BoatTrafficState,
-  VehicleTrafficStatus,
 } from "../lib/schema";
 import { getSystemState, setBridgeState, setCarTrafficState, setBoatTrafficState, resetSystem } from "../lib/api";
 
@@ -19,7 +18,6 @@ export function useESPStatus(
   const [carTrafficStatus, setCarTrafficStatus] = useState<CarTrafficStatus | null>(null);
   const [boatTrafficStatus, setBoatTrafficStatus] = useState<BoatTrafficStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const [vehicleTrafficStatus, setVehicleTrafficStatus] = useState<VehicleTrafficStatus | null>(null);
 
   const handleFetchSystem = async () => {
     try {
@@ -135,20 +133,6 @@ export function useESPStatus(
         });
       }
 
-      if (data.trafficCounts) {
-        setVehicleTrafficStatus({
-          left: data.trafficCounts.left ?? 0,
-          right: data.trafficCounts.right ?? 0,
-          receivedAt: now,
-        });
-      } else {
-        setVehicleTrafficStatus({
-          left: 0,
-          right: 0,
-          receivedAt: now,
-        });
-      }
-
       logActivity("received", "System reset applied. Bridge returning to idle.");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Reset request failed.";
@@ -164,8 +148,6 @@ export function useESPStatus(
     setCarTrafficStatus,
     boatTrafficStatus,
     setBoatTrafficStatus,
-    vehicleTrafficStatus,
-    setVehicleTrafficStatus,
     systemStatus,
     setSystemStatus,
     handleFetchSystem,
