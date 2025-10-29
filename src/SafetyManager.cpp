@@ -58,6 +58,12 @@ void SafetyManager::triggerEmergency(const char *reason)
 {
     // std::lock_guard<std::mutex> lock(m_mutex);
 
+    if (m_simulationMode)
+    {
+        LOG_WARN(Logger::TAG_SYS, "Simulation mode active - ignoring emergency trigger: %s", reason);
+        return;
+    }
+
     if (!m_emergencyActive)
     {
         m_emergencyActive = true;
@@ -102,6 +108,11 @@ void SafetyManager::setSimulationMode(bool enabled)
     std::lock_guard<std::mutex> lock(m_mutex);
 
     m_simulationMode = enabled;
+    if (enabled && m_emergencyActive)
+    {
+        m_emergencyActive = false;
+        LOG_INFO(Logger::TAG_SYS, "Safety Manager cleared emergency state for simulation mode");
+    }
     LOG_INFO(Logger::TAG_SYS, "Safety Manager simulation mode %s",
              enabled ? "enabled" : "disabled");
 }

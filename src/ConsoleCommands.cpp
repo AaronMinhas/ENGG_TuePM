@@ -52,6 +52,7 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   {
     motor_.setSimulationMode(true);
     detect_.setSimulationMode(true);
+    safety_.setSimulationMode(true);
     LOG_INFO(Logger::TAG_CON, "SIMULATION MODE ENABLED (motor + ultrasonic)");
     return true;
   }
@@ -59,6 +60,7 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   {
     motor_.setSimulationMode(false);
     detect_.setSimulationMode(false);
+    safety_.setSimulationMode(false);
     LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (motor + ultrasonic)");
     auto* resetData = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
     eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
@@ -100,7 +102,7 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
     return true;
   }
 
-  if (safety_.isEmergencyActive())
+  if (!safety_.isSimulationMode() && safety_.isEmergencyActive())
   {
     LOG_WARN(Logger::TAG_CON, "System is in EMERGENCY mode. Use 'test clear' or 'test status'.");
     return true;
