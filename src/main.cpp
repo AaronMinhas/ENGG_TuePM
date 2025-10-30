@@ -44,7 +44,7 @@ SafetyManager safetyManager(systemEventBus, systemCommandBus);
 DetectionSystem detectionSystem(systemEventBus);
 
 // Console router
-ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl, safetyManager);
+ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl);
 
 // Task handles for FreeRTOS
 TaskHandle_t controlLogicTaskHandle = NULL;

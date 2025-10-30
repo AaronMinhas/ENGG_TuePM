@@ -3,43 +3,36 @@
 #include "EventBus.h"
 #include "Logger.h"
 
-// Static instance pointer for interrupt handler
-MotorControl* MotorControl::s_instance = nullptr;
-
 MotorControl::MotorControl(EventBus& eventBus)
     : m_eventBus(eventBus), 
-      m_encoderCount(0),
-      m_encoderLastA(false),
       m_motorRunning(false),
       m_raisingBridge(false),
-      m_simulationMode(false) {      // Start in real mode by default
-    s_instance = this; // Set static instance for interrupt handler
+      m_simulationMode(false),      // Start in real mode by default
+      m_limitCleared(false),
+      m_inGracePeriod(false),
+      m_graceEndsAt(0) {
 }
 
 void MotorControl::init() {
-    LOG_INFO(Logger::TAG_MC, "Initialising motor and encoder...");
+    LOG_INFO(Logger::TAG_MC, "Initialising motor control...");
     
     // Configure motor control pins
     pinMode(MOTOR_PWM_PIN, OUTPUT);
     pinMode(MOTOR_DIR_PIN_1, OUTPUT);
     pinMode(MOTOR_DIR_PIN_2, OUTPUT);
     
-    // Configure encoder pins
-    pinMode(ENCODER_PIN_A, INPUT_PULLUP);
-    pinMode(ENCODER_PIN_B, INPUT_PULLUP);
-    
-    // Attach interrupt for encoder
-    attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderISR, CHANGE);
+    // Configure shared limit switch input on GPIO13 with internal pull-up
+    pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);
+    int initialLimitState = digitalRead(LIMIT_SWITCH_PIN);
+    LOG_INFO(Logger::TAG_MC, "Limit switch initial state: %s",
+             initialLimitState == LIMIT_SWITCH_ACTIVE_STATE ? "ACTIVE" : "INACTIVE");
     
     // Initialise motor to stopped state
     stopMotor();
     
-    // Reset encoder count
-    resetEncoder();
-    
     LOG_INFO(Logger::TAG_MC, "Initialisation complete");
-    LOG_INFO(Logger::TAG_MC, "Using pins - PWM: %d, DIR1: %d, DIR2: %d, ENC_A: %d, ENC_B: %d",
-             MOTOR_PWM_PIN, MOTOR_DIR_PIN_1, MOTOR_DIR_PIN_2, ENCODER_PIN_A, ENCODER_PIN_B);
+    LOG_INFO(Logger::TAG_MC, "Using pins - PWM: %d, DIR1: %d, DIR2: %d, LIMIT: %d",
+             MOTOR_PWM_PIN, MOTOR_DIR_PIN_1, MOTOR_DIR_PIN_2, LIMIT_SWITCH_PIN);
 }
 
 void MotorControl::raiseBridge() {
@@ -50,42 +43,19 @@ void MotorControl::raiseBridge() {
         return;
     }
     
-    // SIMULATION MODE: Skip actual motor control
-    if (m_simulationMode) {
-        LOG_INFO(Logger::TAG_MC, "SIMULATION MODE - Simulating bridge raise");
-        m_motorRunning = true;
-        m_raisingBridge = true;
-        
-        // Simulate movement with a short delay
-        delay(2000); // 2 seconds simulation delay
-        
-        m_motorRunning = false;
-        LOG_INFO(Logger::TAG_MC, "Bridge raised successfully (SIMULATED)");
-        
-        // Publish success event
-        auto* eventData = new SimpleEventData(BridgeEvent::BRIDGE_OPENED_SUCCESS);
-        m_eventBus.publish(BridgeEvent::BRIDGE_OPENED_SUCCESS, eventData);
-        
-        LOG_DEBUG(Logger::TAG_MC, "Success event published");
-        return;
-    }
-    
-    // REAL MODE: Time-based motor control
     m_raisingBridge = true;
     m_motorRunning = true;
-    
-    LOG_INFO(Logger::TAG_MC, "Starting to raise bridge (TIME-BASED)");
-    LOG_DEBUG(Logger::TAG_MC, "Will run for %lu milliseconds", BRIDGE_OPEN_TIME);
-    
-    // Store operation parameters for non-blocking operation
-    m_operationStartTime = millis();
-    m_operationDuration = BRIDGE_OPEN_TIME;
-    m_lastProgressTime = millis();
-    
+    m_limitCleared = !isLimitSwitchActive();
+    m_inGracePeriod = false;
+    m_graceEndsAt = 0;
+
+    if (!m_limitCleared) {
+        LOG_DEBUG(Logger::TAG_MC, "Starting raise with limit engaged - waiting for release before honouring stops");
+    }
+
     // Start motor in forward direction (adjust speed as needed)
     setMotorSpeed(180, true); // 180/255 = ~70% speed, forward direction
-    
-    LOG_DEBUG(Logger::TAG_MC, "Non-blocking operation started. Use checkProgress() to monitor.");
+    LOG_INFO(Logger::TAG_MC, "Motor raising bridge; monitoring shared limit switch for stop condition");
 }
 
 void MotorControl::lowerBridge() {
@@ -96,82 +66,65 @@ void MotorControl::lowerBridge() {
         return;
     }
     
-    // SIMULATION MODE: Skip actual motor control
-    if (m_simulationMode) {
-        LOG_INFO(Logger::TAG_MC, "SIMULATION MODE - Simulating bridge lower");
-        m_motorRunning = true;
-        m_raisingBridge = false;
-        
-        // Simulate movement with a short delay
-        delay(2000); // 2 seconds simulation delay
-        
-        m_motorRunning = false;
-        LOG_INFO(Logger::TAG_MC, "Bridge lowered successfully (SIMULATED)");
-        
-        // Publish success event
-        auto* eventData = new SimpleEventData(BridgeEvent::BRIDGE_CLOSED_SUCCESS);
-        m_eventBus.publish(BridgeEvent::BRIDGE_CLOSED_SUCCESS, eventData);
-        
-        LOG_DEBUG(Logger::TAG_MC, "Success event published");
-        return;
-    }
-    
-    // REAL MODE: Time-based motor control
     m_raisingBridge = false;
     m_motorRunning = true;
-    
-    LOG_INFO(Logger::TAG_MC, "Starting to lower bridge (TIME-BASED)");
-    LOG_DEBUG(Logger::TAG_MC, "Will run for %lu milliseconds", BRIDGE_CLOSE_TIME);
-    
-    // Store operation parameters for non-blocking operation
-    m_operationStartTime = millis();
-    m_operationDuration = BRIDGE_CLOSE_TIME;
-    m_lastProgressTime = millis();
-    
+    m_limitCleared = !isLimitSwitchActive();
+    m_inGracePeriod = false;
+    m_graceEndsAt = 0;
+
+    if (!m_limitCleared) {
+        LOG_DEBUG(Logger::TAG_MC, "Starting lower with limit engaged - waiting for release before honouring stops");
+    }
+
     // Start motor in reverse direction (adjust speed as needed)
     setMotorSpeed(180, false);
-    
-    LOG_DEBUG(Logger::TAG_MC, "Non-blocking operation started. Use checkProgress() to monitor.");
+    LOG_INFO(Logger::TAG_MC, "Motor lowering bridge; monitoring shared limit switch for stop condition");
 }
 
 void MotorControl::checkProgress() {
     if (!m_motorRunning) {
         return; // No operation in progress
     }
-    
-    unsigned long currentTime = millis();
-    unsigned long elapsedTime = currentTime - m_operationStartTime;
-    
-    // Print progress every 1000ms (1 second)
-    if (currentTime - m_lastProgressTime >= 1000) {
-        float percentComplete = (float)elapsedTime / (float)m_operationDuration * 100.0;
-        LOG_DEBUG(Logger::TAG_MC, "Progress - %.1f%% complete (%lu/%lu ms)",
-                  percentComplete, elapsedTime, m_operationDuration);
-        m_lastProgressTime = currentTime;
-    }
-    
-    // Check if operation duration completed
-    if (elapsedTime >= m_operationDuration) {
-        stopMotor();
-        LOG_INFO(Logger::TAG_MC, "Bridge operation completed successfully after %lu ms", elapsedTime);
-        
-        // Publish success event
-        BridgeEvent eventType = m_raisingBridge ? BridgeEvent::BRIDGE_OPENED_SUCCESS : BridgeEvent::BRIDGE_CLOSED_SUCCESS;
-        auto* eventData = new SimpleEventData(eventType);
-        m_eventBus.publish(eventType, eventData);
-        
-        LOG_DEBUG(Logger::TAG_MC, "Success event published");
+
+    const bool limitActive = isLimitSwitchActive();
+    const unsigned long now = millis();
+
+    if (!limitActive) {
+        if (!m_limitCleared) {
+            m_limitCleared = true;
+            LOG_DEBUG(Logger::TAG_MC, "Shared limit switch released - arming grace window");
+        }
+
+        if (!m_inGracePeriod) {
+            m_inGracePeriod = true;
+            m_graceEndsAt = now + LIMIT_RELEASE_GRACE_MS;
+            LOG_DEBUG(Logger::TAG_MC, "Ignoring limit switch re-triggers for %lu ms",
+                      LIMIT_RELEASE_GRACE_MS);
+        }
+
         return;
     }
-    
-    // Check for timeout (safety fallback)
-    if (elapsedTime >= OPERATION_TIMEOUT) {
-        stopMotor();
-        LOG_ERROR(Logger::TAG_MC, "Bridge operation timed out (safety timeout)!");
-        LOG_ERROR(Logger::TAG_MC, "Timeout details - Elapsed: %lu ms, Duration: %lu ms",
-                  elapsedTime, m_operationDuration);
+
+    // If we have not seen the limit release yet, keep running (still on the original switch)
+    if (!m_limitCleared) {
         return;
     }
+
+    // Honour grace window to prevent chatter stopping the motor immediately after release
+    if (m_inGracePeriod && (long)(now - m_graceEndsAt) < 0) {
+        return;
+    }
+
+    m_inGracePeriod = false;
+
+    stopMotor();
+    LOG_INFO(Logger::TAG_MC, "Limit switch re-engaged - stopping motor");
+
+    BridgeEvent eventType = m_raisingBridge ? BridgeEvent::BRIDGE_OPENED_SUCCESS
+                                            : BridgeEvent::BRIDGE_CLOSED_SUCCESS;
+    auto* eventData = new SimpleEventData(eventType);
+    m_eventBus.publish(eventType, eventData);
+    LOG_DEBUG(Logger::TAG_MC, "Success event published due to limit switch");
 }
 
 void MotorControl::halt() {
@@ -195,47 +148,8 @@ void MotorControl::testMotor() {
     setMotorSpeed(100, false); // Low speed reverse
     delay(2000);
     stopMotor();
-    
-    LOG_INFO(Logger::TAG_MC, "Test complete. Final encoder count: %ld", m_encoderCount);
-}
 
-void MotorControl::testEncoder() {
-    LOG_INFO(Logger::TAG_MC, "Testing encoder...");
-    LOG_INFO(Logger::TAG_MC, "Manually rotate the motor shaft and watch the count change");
-    LOG_INFO(Logger::TAG_MC, "Press any key to stop the test");
-    
-    long lastCount = m_encoderCount;
-    unsigned long lastPrint = millis();
-    
-    while (!Serial.available()) {
-        if (millis() - lastPrint > 200) { // Print every 200ms
-            if (m_encoderCount != lastCount) {
-                LOG_INFO(Logger::TAG_MC, "Encoder count: %ld (changed by %ld)",
-                         m_encoderCount, m_encoderCount - lastCount);
-                lastCount = m_encoderCount;
-            }
-            lastPrint = millis();
-        }
-        delay(10);
-    }
-    
-    // Clear serial buffer
-    while (Serial.available()) {
-        Serial.read();
-    }
-    
-    LOG_INFO(Logger::TAG_MC, "Encoder test complete. Final count: %ld", m_encoderCount);
-}
-
- 
-
-long MotorControl::getEncoderCount() {
-    return m_encoderCount;
-}
-
-void MotorControl::resetEncoder() {
-    m_encoderCount = 0;
-    LOG_INFO(Logger::TAG_MC, "Encoder count reset to 0");
+    LOG_INFO(Logger::TAG_MC, "Motor test complete");
 }
 
 // Private methods
@@ -268,39 +182,9 @@ void MotorControl::stopMotor() {
     analogWrite(MOTOR_PWM_PIN, 0);
     
     m_motorRunning = false;
+    m_limitCleared = false;
+    m_inGracePeriod = false;
+    m_graceEndsAt = 0;
     
     LOG_INFO(Logger::TAG_MC, "Motor stopped");
-}
-
-bool MotorControl::isTargetReached(long targetCount) {
-    // Allow some tolerance for target position (±5 counts)
-    const int tolerance = 5;
-    
-    if (m_raisingBridge) {
-        return m_encoderCount >= (targetCount - tolerance);
-    } else {
-        return m_encoderCount <= (targetCount + tolerance);
-    }
-}
-
-// Static interrupt service routine for encoder
-void IRAM_ATTR MotorControl::encoderISR() {
-    if (s_instance) {
-        // Read current state of encoder A
-        bool currentA = digitalRead(s_instance->ENCODER_PIN_A);
-        
-        // Check for rising edge on encoder A
-        if (!s_instance->m_encoderLastA && currentA) {
-            // Read encoder B to determine direction
-            bool encoderB = digitalRead(s_instance->ENCODER_PIN_B);
-            
-            if (encoderB) {
-                s_instance->m_encoderCount++; // Forward/CW
-            } else {
-                s_instance->m_encoderCount--; // Reverse/CCW
-            }
-        }
-        
-        s_instance->m_encoderLastA = currentA;
-    }
 }

@@ -4,14 +4,13 @@
 
 class MotorControl;
 class DetectionSystem;
-class SafetyManager;
 class EventBus;
 class SignalControl;
 
 // Centralised CLI command router
 class ConsoleCommands {
 public:
-  ConsoleCommands(MotorControl& motor, DetectionSystem& detect, EventBus& eventBus, SignalControl& signalControl, SafetyManager& safety); 
+  ConsoleCommands(MotorControl& motor, DetectionSystem& detect, EventBus& eventBus, SignalControl& signalControl);
 
   void begin();
   void poll();   // non-blocking; call frequently
@@ -20,7 +19,6 @@ public:
 private:
   MotorControl& motor_;
   DetectionSystem& detect_;
-  SafetyManager& safety_;
   EventBus& eventBus_;
   SignalControl& signalControl_;
 
@@ -34,5 +32,6 @@ private:
   uint8_t streamMask_ = 0; // bitmask tracking which ultrasonic streams are active
   unsigned long streamIntervalMs_ = 100; // default 10 Hz
   unsigned long lastStreamMs_ = 0;
+  bool limitStreamEnabled_ = false;
   void handleStreaming();
 };

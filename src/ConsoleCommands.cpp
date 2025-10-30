@@ -5,10 +5,9 @@
 #include "SignalControl.h"
 #include "BridgeSystemDefs.h"
 #include "Logger.h"
-#include "SafetyManager.h"
 
-ConsoleCommands::ConsoleCommands(MotorControl &motor, DetectionSystem &detect, EventBus& eventBus, SignalControl& signalControl, SafetyManager &safety)
-    : motor_(motor), detect_(detect), safety_(safety), eventBus_(eventBus), signalControl_(signalControl) {}
+ConsoleCommands::ConsoleCommands(MotorControl &motor, DetectionSystem &detect, EventBus& eventBus, SignalControl& signalControl)
+    : motor_(motor), detect_(detect), eventBus_(eventBus), signalControl_(signalControl) {}
 
 void ConsoleCommands::begin()
 {
@@ -50,61 +49,18 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   // Global simulation toggles
   if (cmd == "sim on" || cmd == "simulation on")
   {
-    motor_.setSimulationMode(true);
+    // Simulation mode now applies to sensors only; motor remains manual/physical
     detect_.setSimulationMode(true);
-    safety_.setSimulationMode(true);
-    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE ENABLED (motor + ultrasonic)");
+    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE ENABLED (ultrasonic only; motor remains manual)");
     return true;
   }
   if (cmd == "sim off" || cmd == "simulation off")
   {
-    motor_.setSimulationMode(false);
     detect_.setSimulationMode(false);
-    safety_.setSimulationMode(false);
-    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (motor + ultrasonic)");
+    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (ultrasonic)");
     auto* resetData = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
     eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
     LOG_INFO(Logger::TAG_CON, "System reset requested after exiting simulation mode");
-    return true;
-  }
-
-  if (cmd == "test fault")
-  {
-    if (!safety_.isTestFaultActive())
-    {
-      safety_.triggerTestFault();
-      LOG_WARN(Logger::TAG_CON, "TEST FAULT triggered. System entering emergency mode.");
-    }
-    else
-    {
-      LOG_INFO(Logger::TAG_CON, "TEST FAULT already active.");
-    }
-    return true;
-  }
-
-  if (cmd == "test clear" || cmd == "test off")
-  {
-    if (safety_.isTestFaultActive())
-    {
-      safety_.clearTestFault();
-      LOG_INFO(Logger::TAG_CON, "TEST FAULT cleared. System back to normal operation.");
-    }
-    else
-    {
-      LOG_INFO(Logger::TAG_CON, "No TEST FAULT is currently active.");
-    }
-    return true;
-  }
-
-  if (cmd == "test status")
-  {
-    LOG_INFO(Logger::TAG_CON, "TEST FAULT STATUS: %s", safety_.isTestFaultActive() ? "ACTIVE" : "INACTIVE");
-    return true;
-  }
-
-  if (!safety_.isSimulationMode() && safety_.isEmergencyActive())
-  {
-    LOG_WARN(Logger::TAG_CON, "System is in EMERGENCY mode. Use 'test clear' or 'test status'.");
     return true;
   }
   
@@ -112,6 +68,7 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   if (cmd == "raise" || cmd == "r") { motor_.raiseBridge(); return true; }
   if (cmd == "lower" || cmd == "l") { motor_.lowerBridge(); return true; }
   if (cmd == "halt"  || cmd == "h" || cmd == "stop") { motor_.halt(); return true; }
+
 
   // Test boat event commands
   if (cmd == "test boat left" || cmd == "tbl") {
@@ -179,6 +136,20 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   
   if (cmd == "lights status" || cmd == "ls") {
     LOG_INFO(Logger::TAG_CON, "LIGHT CONTROL: Use 'status' command to see current system state");
+    return true;
+  }
+
+  // Limit switch diagnostics
+  if (cmd == "limit") {
+    const int raw = motor_.getLimitSwitchRaw();
+    const bool active = motor_.isLimitSwitchActive();
+    LOG_INFO(Logger::TAG_MC, "LIMIT SWITCH (shared): raw=%d, active=%s", raw, active ? "YES" : "NO");
+    return true;
+  }
+  if (cmd == "lsw") {
+    const bool enable = (limitStreamEnabled_ == false);
+    limitStreamEnabled_ = enable;
+    LOG_INFO(Logger::TAG_MC, "LIMIT SWITCH STREAM: %s", enable ? "enabled" : "disabled");
     return true;
   }
 
@@ -259,9 +230,6 @@ void ConsoleCommands::printHelp()
   Serial.println("  test boat right|tbr      - Simulate boat from RIGHT (exits LEFT)");
   Serial.println("  test boat pass left|tbpl - Simulate boat exiting LEFT side");
   Serial.println("  test boat pass right|tbpr - Simulate boat exiting RIGHT side");
-  Serial.println("  test fault               - Trigger manual test fault/emergency");
-  Serial.println("  test clear|test off      - Clear manual test fault");
-  Serial.println("  test status              - Show manual test fault status");
   Serial.println("  car light <colour>|cl <colour>  - Set car lights (red/yellow/green)");
   Serial.println("  boat light <side> <colour>|bl <side> <colour>  - Set boat lights (left/right, red/green)");
   Serial.println("  lights status|ls          - Show light control status");
@@ -292,10 +260,9 @@ void ConsoleCommands::printStatus()
 void ConsoleCommands::handleStreaming()
 {
   const unsigned long now = millis();
-  if (streamMask_ == 0)
-    return;
-  if (now - lastStreamMs_ < streamIntervalMs_)
-    return;
+  bool any = (streamMask_ != 0) || limitStreamEnabled_;
+  if (!any) return;
+  if (now - lastStreamMs_ < streamIntervalMs_) return;
   lastStreamMs_ = now;
 
   // Ensure sensor gets a chance to read
@@ -317,5 +284,12 @@ void ConsoleCommands::handleStreaming()
               (rightDist > 0 ? String(rightDist, 1).c_str() : "unknown"),
               detect_.getRightZoneName(),
               detect_.isSimulationMode() ? "SIM" : "REAL");
+  }
+
+  if (limitStreamEnabled_)
+  {
+    const int raw = motor_.getLimitSwitchRaw();
+    const bool active = motor_.isLimitSwitchActive();
+    LOG_DEBUG(Logger::TAG_MC, "LIMIT SWITCH: raw=%d active=%s", raw, active ? "YES" : "NO");
   }
 }
