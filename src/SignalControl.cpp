@@ -123,6 +123,10 @@ void SignalControl::stopTraffic() {
     driveBoat(BOAT_LEFT, "Red");
     driveBoat(BOAT_RIGHT, "Red");
     
+    // Publish car light change event for frontend updates
+    auto* yellowData = new LightChangeData("both", "Yellow", true);
+    m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, yellowData);
+    
     // SUCCESS event will be published by update() after 6 seconds
 }
 
@@ -198,6 +202,9 @@ void SignalControl::update() {
                 if (elapsed >= 4000) {  
                     LOG_INFO(Logger::TAG_SC, "Stopping traffic - Phase 2: car=RED (clearance)");
                     driveCar(CAR, "Red");
+                    // Publish car light change event for frontend updates
+                    auto* redData = new LightChangeData("both", "Red", true);
+                    m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, redData);
                     m_stopPhase = StopPhase::RED_CLEARANCE;
                 }
                 break;
@@ -223,6 +230,10 @@ void SignalControl::update() {
                 if (elapsed >= 2000) {  
                     LOG_INFO(Logger::TAG_SC, "Resuming traffic - Phase 2: car=GREEN");
                     driveCar(CAR, "Green");
+                    
+                    // Publish car light change event for frontend updates
+                    auto* greenData = new LightChangeData("both", "Green", true);
+                    m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, greenData);
                     
                     LOG_INFO(Logger::TAG_SC, "Traffic resumed successfully");
                     auto* resumedData = new SimpleEventData(BridgeEvent::TRAFFIC_RESUMED_SUCCESS);
@@ -287,9 +298,19 @@ void SignalControl::startBoatGreenPeriod(const String& side) {
     if (lower(side) == "left") {
         driveBoat(BOAT_LEFT, "Green");
         driveBoat(BOAT_RIGHT, "Red");
+        // Publish light change events so StateWriter tracks them correctly
+        auto* leftData = new LightChangeData("left", "Green", false);
+        m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, leftData);
+        auto* rightData = new LightChangeData("right", "Red", false);
+        m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, rightData);
     } else if (lower(side) == "right") {
         driveBoat(BOAT_RIGHT, "Green");
         driveBoat(BOAT_LEFT, "Red");
+        // Publish light change events so StateWriter tracks them correctly
+        auto* rightData = new LightChangeData("right", "Green", false);
+        m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, rightData);
+        auto* leftData = new LightChangeData("left", "Red", false);
+        m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, leftData);
     }
     
     // Start queue timer
@@ -312,6 +333,12 @@ void SignalControl::endBoatGreenPeriod() {
     // Set both boat lights to red
     driveBoat(BOAT_LEFT, "Red");
     driveBoat(BOAT_RIGHT, "Red");
+    
+    // Publish light change events so StateWriter tracks them correctly
+    auto* leftData = new LightChangeData("left", "Red", false);
+    m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, leftData);
+    auto* rightData = new LightChangeData("right", "Red", false);
+    m_eventBus.publish(BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS, rightData);
     
     // Clear queue state
     m_boatQueueActive = false;

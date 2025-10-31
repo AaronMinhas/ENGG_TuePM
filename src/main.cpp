@@ -33,15 +33,15 @@ Controller controller(systemEventBus, systemCommandBus, motorControl,
                      signalControl, localStateIndicator);
 BridgeStateMachine stateMachine(systemEventBus, systemCommandBus);
 
+// Sensors
+DetectionSystem detectionSystem(systemEventBus);
+
 // WebSocket and state monitoring components
 StateWriter stateWriter(systemEventBus);
-WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus);
+WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus, detectionSystem);
 
 // SafetyManager monitorint components
 SafetyManager safetyManager(systemEventBus, systemCommandBus);
-
-// Sensors
-DetectionSystem detectionSystem(systemEventBus);
 
 // Console router
 ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl);
@@ -150,6 +150,12 @@ void setup() {
     detectionSystem.begin();
     LOG_INFO(Logger::TAG_DS, "Detection System ready for bi-directional boat tracking");
 
+    // Default to simulation mode on boot (both sensors and motor control)
+    detectionSystem.setSimulationMode(true);
+    motorControl.setSimulationMode(true);
+    auto* simOnBoot = new SimpleEventData(BridgeEvent::SIMULATION_ENABLED);
+    systemEventBus.publish(BridgeEvent::SIMULATION_ENABLED, simOnBoot, EventPriority::NORMAL);
+
     LOG_INFO(Logger::TAG_LOC, "Initialising Local State Indicator...");
     localStateIndicator.begin();
     LOG_INFO(Logger::TAG_LOC, "GlowBit Stick indicator ready");
@@ -159,6 +165,7 @@ void setup() {
     // Initialise console after Serial is ready
     console.begin();
     wss.attachConsole(&console);
+    stateWriter.attachConsole(&console);
     
     LOG_INFO(Logger::TAG_SYS, "=== Bridge Control System Ready ===");
     LOG_INFO(Logger::TAG_SYS, "State Machine: %s", stateMachine.getStateString().c_str());

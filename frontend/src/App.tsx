@@ -8,7 +8,7 @@ import { useActivityLog } from "./hooks/useActivityLog";
 import { useESPStatus } from "./hooks/useESPStatus";
 import { useESPWebSocket } from "./hooks/useESPWebSocket";
 import { sendConsoleCommand } from "./lib/api";
-import { CarTrafficState, BoatTrafficState } from "./lib/schema";
+import { CarTrafficState, BoatTrafficState, SimulationSensorsStatus } from "./lib/schema";
 
 function App() {
   const { packetsSent, packetsReceived, lastSentAt, lastReceivedAt, incrementSent, incrementReceived } =
@@ -31,9 +31,10 @@ function App() {
     handleCarTraffic,
     handleBoatTraffic,
     handleResetSystem,
+    handleSimulationSensors,
   } = useESPStatus(incrementSent, incrementReceived, logActivity);
 
-  useESPWebSocket({
+  const { reconnect } = useESPWebSocket({
     setBridgeStatus,
     setCarTrafficStatus,
     setBoatTrafficStatus,
@@ -44,7 +45,6 @@ function App() {
     boatTrafficStatus,
   });
 
-  const [simulationMode, setSimulationMode] = useState(false);
   const [resetting, setResetting] = useState(false);
 
   const handleReset = async () => {
@@ -57,6 +57,14 @@ function App() {
       setResetting(false);
     }
   };
+
+  const simulationActive = Boolean(systemStatus?.simulation);
+  const simulationSensors: SimulationSensorsStatus =
+    systemStatus?.simulationSensors ?? {
+      ultrasonicLeft: false,
+      ultrasonicRight: false,
+      beamBreak: false,
+    };
 
   const dashboardProps = {
     bridgeStatus,
@@ -73,7 +81,7 @@ function App() {
     handleCarTraffic,
     handleBoatTraffic,
     handleFetchSystem,
-    controlsDisabled: simulationMode,
+    controlsDisabled: simulationActive,
   };
 
   const [sendingConsole, setSendingConsole] = useState(false);
@@ -99,14 +107,7 @@ function App() {
         "received",
         handled ? `Console acknowledged '${trimmed}'` : `Console ignored '${trimmed}'`
       );
-      if (handled) {
-        const normalized = trimmed.toLowerCase();
-        if (normalized === "sim on" || normalized === "simulation on") {
-          setSimulationMode(true);
-        } else if (normalized === "sim off" || normalized === "simulation off") {
-          setSimulationMode(false);
-        }
-      }
+      // Do not optimistically toggle simulation locally; we reflect actual device state via WS/polling
       return handled
         ? { ok: true, message }
         : { ok: false, message };
@@ -139,9 +140,23 @@ function App() {
     }
   };
 
+  const handleSimulationSensorUpdate = async (updates: {
+    ultrasonicLeft?: boolean;
+    ultrasonicRight?: boolean;
+    beamBreak?: boolean;
+  }) => {
+    try {
+      await handleSimulationSensors(updates);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update simulation sensors.";
+      return { ok: false, error: message };
+    }
+  };
+
   return (
     <div className="bg-gray-100 min-h-screen w-full">
-      <TopNav onReset={handleReset} resetting={resetting} />
+      <TopNav onReset={handleReset} resetting={resetting} onReconnect={reconnect} />
       <div className="flex justify-center mt-4">
         <DesktopDashboard {...dashboardProps} />
         <MobileDashboard {...dashboardProps} />
@@ -149,11 +164,15 @@ function App() {
       <ConsoleCommandPanel
         onSend={handleConsoleCommand}
         sending={sendingConsole}
-        simulationActive={simulationMode}
+        simulationActive={simulationActive}
+        simulationSensors={simulationSensors}
+        ultrasonicStreaming={systemStatus?.ultrasonicStreaming}
         carTrafficStatus={carTrafficStatus}
         boatTrafficStatus={boatTrafficStatus}
+        logLevel={systemStatus?.logLevel}
         onSimCarTraffic={triggerSimCarTraffic}
         onSimBoatTraffic={triggerSimBoatTraffic}
+        onSimSensors={handleSimulationSensorUpdate}
       />
     </div>
   );

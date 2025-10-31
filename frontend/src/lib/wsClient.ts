@@ -83,6 +83,16 @@ export class ESPWebSocketClient {
     this.ws = null;
   }
 
+  reconnect() {
+    console.log("[WS] Manual reconnect requested");
+    this.close();
+    this.reconnectAttempts = 0; // Reset attempts for manual reconnect
+    // Small delay to ensure close completes
+    setTimeout(() => {
+      this.connect();
+    }, 100);
+  }
+
   private notifyStatus(s: "Open" | "Closed" | "Connecting") {
     this.statusListener?.(s);
   }

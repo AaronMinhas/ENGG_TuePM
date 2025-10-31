@@ -1,5 +1,12 @@
 import { ESPWebSocketClient } from "./wsClient";
-import type { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, ResetResponse } from "./schema";
+import type {
+  BridgeStatus,
+  CarTrafficStatus,
+  BoatTrafficStatus,
+  SystemStatus,
+  ResetResponse,
+  SimulationSensorsStatus,
+} from "./schema";
 
 let client: ESPWebSocketClient | null = null;
 
@@ -49,6 +56,17 @@ export const setBoatTrafficState = (side: "left" | "right", value: "Red" | "Gree
     { side, value }
   );
 
+export const setSimulationSensors = (payload: {
+  ultrasonicLeft?: boolean;
+  ultrasonicRight?: boolean;
+  beamBreak?: boolean;
+}) =>
+  getESPClient().request<{ simulationSensors: SimulationSensorsStatus }, {
+    ultrasonicLeft?: boolean;
+    ultrasonicRight?: boolean;
+    beamBreak?: boolean;
+  }>("SET", "/simulation/sensors", payload);
+
 export const resetSystem = () =>
   getESPClient().request<ResetResponse, Record<string, never>>("SET", "/system/reset", {});
 
@@ -56,3 +74,12 @@ export const sendConsoleCommand = (command: string) =>
   getESPClient().request<ConsoleCommandResponse, { command: string }>("SET", "/console/command", {
     command,
   });
+
+export const reconnectWebSocket = () => {
+  if (client) {
+    console.log("[Reconnect] Manually reconnecting WebSocket...");
+    client.reconnect();
+  } else {
+    console.warn("[Reconnect] WebSocket client not initialized, cannot reconnect");
+  }
+};

@@ -6,12 +6,12 @@ import React from "react";
 import { ActivitySecProps } from "../types/ActivitySec";
 import { Activity } from "lucide-react";
 
-export default function ActivitySec({ log }: Readonly<ActivitySecProps>) {
+export default function ActivitySec({ log, bridgeState }: Readonly<ActivitySecProps>) {
   return (
     <div className="bg-white rounded-md p-4 row-span-2 col-span-2 lg:col-span-1 lg:row-span-4 border border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] h-full min-h-0 w-full flex flex-col">
       <div className="flex gap-2 mb-4">
-        <Activity size={22} />
-        <span className="font-semibold">Activity</span>
+        <Activity size={22} className="text-gray-700" />
+        <span className="font-semibold text-gray-900">Activity</span>
       </div>
 
       <div className="cursor-default max-h-[200px] lg:max-h-none rounded-lg min-h-0 border border-base-200 h-full p-4 overflow-y-auto flex-1 space-y-2">
@@ -25,8 +25,8 @@ export default function ActivitySec({ log }: Readonly<ActivitySecProps>) {
                 entry.type === "sent" ? "bg-blue-100" : "bg-green-100"
               }`}
             >
-              <span>
-                <strong>{entry.type === "sent" ? "Sent:" : "Received:"}</strong> {entry.message}
+              <span className="text-gray-900">
+                <strong className="font-semibold">{entry.type === "sent" ? "Sent:" : "Received:"}</strong> {entry.message}
               </span>
               <span className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleTimeString()}</span>
             </div>

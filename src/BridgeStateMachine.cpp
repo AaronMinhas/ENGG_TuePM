@@ -117,13 +117,7 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
     switch (m_currentState) {
         case BridgeState::IDLE:
             // IDLE state handles trigger events and success confirmations
-            if (event == BridgeEvent::TRAFFIC_STOPPED_SUCCESS) {
-                LOG_INFO(Logger::TAG_FSM, "TRAFFIC_STOPPED_SUCCESS received - transitioning to STOPPING_TRAFFIC");
-                changeState(BridgeState::STOPPING_TRAFFIC);
-                // Now issue the next command: raise bridge
-                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
-                LOG_INFO(Logger::TAG_FSM, "Now waiting for BRIDGE_OPENED_SUCCESS...");
-            } else if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
+            if (event == BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED) {
                 LOG_INFO(Logger::TAG_FSM, "Bridge open requested → opening");
                 changeState(BridgeState::MANUAL_OPENING);
                 issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
@@ -142,10 +136,23 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
             break;
 
         case BridgeState::STOPPING_TRAFFIC:
-            // STOPPING_TRAFFIC state waits ONLY for bridge to be confirmed fully open
-            if (event == BridgeEvent::BRIDGE_OPENED_SUCCESS) {
-                LOG_INFO(Logger::TAG_FSM, "BRIDGE_OPENED_SUCCESS received - transitioning to OPENING");
+            // STOPPING_TRAFFIC state waits for traffic to stop, then starts bridge opening
+            if (event == BridgeEvent::TRAFFIC_STOPPED_SUCCESS) {
+                LOG_INFO(Logger::TAG_FSM, "TRAFFIC_STOPPED_SUCCESS received - transitioning to OPENING and issuing RAISE_BRIDGE");
                 changeState(BridgeState::OPENING);
+                // Now issue the next command: raise bridge
+                issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
+                LOG_INFO(Logger::TAG_FSM, "Now waiting for BRIDGE_OPENED_SUCCESS...");
+            } else {
+                LOG_DEBUG(Logger::TAG_FSM, "STOPPING_TRAFFIC state ignoring non-success event - still waiting for TRAFFIC_STOPPED_SUCCESS");
+            }
+            break;
+
+        case BridgeState::OPENING:
+            // OPENING state waits for bridge to finish opening, then transitions to OPEN
+            if (event == BridgeEvent::BRIDGE_OPENED_SUCCESS) {
+                LOG_INFO(Logger::TAG_FSM, "BRIDGE_OPENED_SUCCESS received - transitioning to OPEN");
+                changeState(BridgeState::OPEN);
                 
                 // Record entry time for emergency timeout
                 openingStateEntryTime_ = millis();
@@ -165,54 +172,43 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                     startActiveBoatWindow(activeBoatSide_);
                 }
                 
-                // Now wait for BOAT_PASSED (opposite side to clear)
-                LOG_INFO(Logger::TAG_FSM, "Now waiting for BOAT_PASSED on side=%s",
-                         sideName(otherSide(activeBoatSide_)));
+                // Now wait for BOAT_PASSED (beam break detects when boat clears)
+                LOG_INFO(Logger::TAG_FSM, "Now waiting for BOAT_PASSED (beam break will detect when boat clears)");
             } else {
-                LOG_DEBUG(Logger::TAG_FSM, "STOPPING_TRAFFIC state ignoring non-success event - still waiting for BRIDGE_OPENED_SUCCESS");
+                LOG_DEBUG(Logger::TAG_FSM, "OPENING state ignoring non-success event - still waiting for BRIDGE_OPENED_SUCCESS");
             }
             break;
 
-        case BridgeState::OPENING:
-            // OPENING state waits for boat to pass (and handles green period expiration)
+        case BridgeState::OPEN:
+            // OPEN state waits for boat to pass (and handles green period expiration)
             if (event == BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED) {
                 endActiveBoatWindow("timer expired");
             } else if (event == BridgeEvent::BOAT_PASSED || 
                        event == BridgeEvent::BOAT_PASSED_LEFT || 
                        event == BridgeEvent::BOAT_PASSED_RIGHT) {
-                BoatSide expectedExit = otherSide(activeBoatSide_);
-                if (expectedExit == BoatSide::UNKNOWN) {
-                    LOG_WARN(Logger::TAG_FSM, "BOAT_PASSED received but active side unknown - ignoring");
-                } else if (lastEventSide_ == BoatSide::UNKNOWN) {
-                    LOG_WARN(Logger::TAG_FSM, "BOAT_PASSED received without side info - ignoring");
-                } else if (lastEventSide_ != expectedExit) {
-                    LOG_WARN(Logger::TAG_FSM, "BOAT_PASSED on unexpected side=%s (expected %s) - ignoring",
-                             sideName(lastEventSide_), sideName(expectedExit));
-                } else {
-                    boatPassedInWindow_ = true;
-                    LOG_INFO(Logger::TAG_FSM, "BOAT_PASSED verified on expected side=%s - continuing window for remaining time",
-                             sideName(lastEventSide_));
-                }
+                // Beam break sensor detects passage - no side validation needed
+                boatPassedInWindow_ = true;
+                LOG_INFO(Logger::TAG_FSM, "BOAT_PASSED detected via beam break - boat has cleared the channel");
             } else {
-                LOG_DEBUG(Logger::TAG_FSM, "OPENING state ignoring non-relevant event - still waiting for BOAT_PASSED");
-            }
-            break;
-
-        case BridgeState::OPEN:
-            // OPEN state waits ONLY for bridge to be confirmed fully closed
-            if (event == BridgeEvent::BRIDGE_CLOSED_SUCCESS) {
-                LOG_INFO(Logger::TAG_FSM, "BRIDGE_CLOSED_SUCCESS received - transitioning to CLOSING");
-                changeState(BridgeState::CLOSING);
-                // Issue command to resume traffic
-                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::RESUME_TRAFFIC);
-                LOG_INFO(Logger::TAG_FSM, "Now waiting for TRAFFIC_RESUMED_SUCCESS...");
-            } else {
-                LOG_DEBUG(Logger::TAG_FSM, "OPEN state ignoring non-success event - still waiting for BRIDGE_CLOSED_SUCCESS");
+                LOG_DEBUG(Logger::TAG_FSM, "OPEN state ignoring non-relevant event - still waiting for boat events");
             }
             break;
 
         case BridgeState::CLOSING:
-            // CLOSING state waits ONLY for traffic to be confirmed resumed
+            // CLOSING state waits for bridge to finish closing, then resumes traffic
+            if (event == BridgeEvent::BRIDGE_CLOSED_SUCCESS) {
+                LOG_INFO(Logger::TAG_FSM, "BRIDGE_CLOSED_SUCCESS received - transitioning to RESUMING_TRAFFIC");
+                changeState(BridgeState::RESUMING_TRAFFIC);
+                // Issue command to resume traffic
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::RESUME_TRAFFIC);
+                LOG_INFO(Logger::TAG_FSM, "Now waiting for TRAFFIC_RESUMED_SUCCESS...");
+            } else {
+                LOG_DEBUG(Logger::TAG_FSM, "CLOSING state ignoring non-success event - still waiting for BRIDGE_CLOSED_SUCCESS");
+            }
+            break;
+
+        case BridgeState::RESUMING_TRAFFIC:
+            // RESUMING_TRAFFIC state waits for traffic to be confirmed resumed
             if (event == BridgeEvent::TRAFFIC_RESUMED_SUCCESS) {
                 startCooldown();
                 LOG_INFO(Logger::TAG_FSM, "TRAFFIC_RESUMED_SUCCESS received - returning to IDLE");
@@ -229,7 +225,7 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                              static_cast<unsigned int>(boatQueue_.size()));
                 }
             } else {
-                LOG_DEBUG(Logger::TAG_FSM, "CLOSING state ignoring non-success event - still waiting for TRAFFIC_RESUMED_SUCCESS");
+                LOG_DEBUG(Logger::TAG_FSM, "RESUMING_TRAFFIC state ignoring non-success event - still waiting for TRAFFIC_RESUMED_SUCCESS");
             }
             break;
 
@@ -387,9 +383,10 @@ void BridgeStateMachine::beginCycleForSide(BoatSide side) {
     boatPassedInWindow_ = false;
     resetCooldown();
 
-    LOG_INFO(Logger::TAG_FSM, "Starting boat cycle for side=%s - issuing STOP_TRAFFIC", sideName(side));
+    LOG_INFO(Logger::TAG_FSM, "Starting boat cycle for side=%s - transitioning to STOPPING_TRAFFIC", sideName(side));
+    changeState(BridgeState::STOPPING_TRAFFIC);
     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
-    LOG_INFO(Logger::TAG_FSM, "Staying in IDLE, waiting for TRAFFIC_STOPPED_SUCCESS...");
+    LOG_INFO(Logger::TAG_FSM, "Now waiting for TRAFFIC_STOPPED_SUCCESS...");
 }
 
 void BridgeStateMachine::startActiveBoatWindow(BoatSide side) {
@@ -502,7 +499,7 @@ bool BridgeStateMachine::issueLowerBridgeAuto() {
     }
 
     pendingLowerRequest_ = PendingLowerRequest::NONE;
-    changeState(BridgeState::OPEN);
+    changeState(BridgeState::CLOSING);
     issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
     LOG_INFO(Logger::TAG_FSM, "Lowering bridge for traffic - waiting for BRIDGE_CLOSED_SUCCESS...");
     return true;

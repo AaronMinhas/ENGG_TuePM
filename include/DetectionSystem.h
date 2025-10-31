@@ -17,6 +17,18 @@ public:
     // Simulation mode controls (disables event publishing but still measures distance)
     void setSimulationMode(bool enable);
     bool isSimulationMode() const;
+    void setSimulationUltrasonicEnabled(bool leftEnabled, bool rightEnabled);
+    void setSimulationBeamBreakEnabled(bool enabled);
+    void setSimulationUltrasonicLeftEnabled(bool enabled);
+    void setSimulationUltrasonicRightEnabled(bool enabled);
+
+    struct SimulationSensorConfig {
+        bool ultrasonicLeftEnabled;
+        bool ultrasonicRightEnabled;
+        bool beamBreakEnabled;
+    };
+
+    SimulationSensorConfig getSimulationSensorConfig() const;
 
     // Direction information
     enum class BoatDirection {
@@ -41,6 +53,9 @@ public:
 private:
     EventBus& m_eventBus;  // Reference to EventBus instance
     bool m_simulationMode = false; // When true, suppress event publishing
+    bool m_simUltrasonicLeftEnabled = false;
+    bool m_simUltrasonicRightEnabled = false;
+    bool m_simBeamBreakEnabled = false;
     // Boat detection state (tracks the active direction plus queued boats waiting to cross)
     bool boatDetected = false;
     BoatDirection boatDirection = BoatDirection::NONE;
@@ -81,4 +96,7 @@ private:
     // Detection methods
     void checkInitialDetection();
     void checkBoatPassed();
+    void publishSimulationSensorConfig() const;
+    bool allowUltrasonicEvents(bool leftSensor) const;
+    bool allowBeamBreakEvents() const;
 };

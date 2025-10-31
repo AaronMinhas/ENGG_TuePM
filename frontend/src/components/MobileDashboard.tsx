@@ -44,11 +44,15 @@ export default function MobileDashboard({
   return (
     <div className="grid lg:hidden grid-cols-2 grid-rows-8 h-[calc(100dvh - 300px)] min-h-0 w-full gap-4 mx-4 mb-4">
       <div className="col-span-2 row-span-2">
-        <ActivitySec log={activityLog} />
+        <ActivitySec log={activityLog} bridgeState={bridgeStatus?.state} />
       </div>
 
       <div className="col-span-2 row-span-2">
-        <BridgeCard bridgeStatus={bridgeStatus} />
+        <BridgeCard 
+          bridgeStatus={bridgeStatus} 
+          carTrafficStatus={carTrafficStatus}
+          boatTrafficStatus={boatTrafficStatus}
+        />
       </div>
 
       <DashCard
@@ -82,7 +86,7 @@ export default function MobileDashboard({
           { id: "m-c-y", label: "Yellow", action: () => handleCarTraffic("Yellow") },
           { id: "m-c-g", label: "Green", action: () => handleCarTraffic("Green") },
         ]}
-        description={`L:${carTrafficStatus?.left.value || "?"} R:${carTrafficStatus?.right.value || "?"}`}
+        description={carTrafficStatus?.left.value || carTrafficStatus?.right.value || ""}
         updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
         status={
           carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined

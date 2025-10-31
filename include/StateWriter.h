@@ -6,11 +6,14 @@
 #include "EventBus.h"
 #include "BridgeSystemDefs.h"
 
+class ConsoleCommands;
+
 class StateWriter {
 public:
   explicit StateWriter(EventBus& bus);
 
   void beginSubscriptions();
+  void attachConsole(ConsoleCommands* console);
 
   void fillBridgeStatus(JsonObject obj) const;
   void fillCarTrafficStatus(JsonObject obj) const;
@@ -23,6 +26,7 @@ public:
 
 private:
   EventBus& bus_;
+  ConsoleCommands* console_ = nullptr;
   mutable std::mutex mu_;
 
   String bridgeState_ = "IDLE";
@@ -34,9 +38,17 @@ private:
   
   String boatLeft_ = "Red";
   String boatRight_ = "Red";
+  
+  // Boat green period timer tracking
+  uint32_t boatTimerStartMs_ = 0;  // When boat green period started (0 = inactive)
+  String boatTimerSide_ = "";       // Which side has green ("left" or "right", empty if inactive)
 
   bool inFault_ = false;
   bool manualMode_ = false;
+  bool simulationMode_ = false;
+  bool simUltrasonicLeftEnabled_ = false;
+  bool simUltrasonicRightEnabled_ = false;
+  bool simBeamBreakEnabled_ = false;
 
   static constexpr size_t LOG_CAP_ = 64;
   std::vector<String> log_;

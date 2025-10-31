@@ -131,6 +131,28 @@ public:
     BoatEventSide getBoatEventSide() const override { return side_; }
 };
 
+class SimulationSensorConfigData : public EventData {
+private:
+    bool ultrasonicLeftEnabled_;
+    bool ultrasonicRightEnabled_;
+    bool beamBreakEnabled_;
+
+public:
+    SimulationSensorConfigData(bool ultrasonicLeftEnabled,
+                               bool ultrasonicRightEnabled,
+                               bool beamBreakEnabled)
+        : ultrasonicLeftEnabled_(ultrasonicLeftEnabled),
+          ultrasonicRightEnabled_(ultrasonicRightEnabled),
+          beamBreakEnabled_(beamBreakEnabled) {}
+
+    const char* getEventType() const override { return "SIMULATION_SENSOR_CONFIG_CHANGED"; }
+    BridgeEvent getEventEnum() const override { return BridgeEvent::SIMULATION_SENSOR_CONFIG_CHANGED; }
+
+    bool isUltrasonicLeftEnabled() const { return ultrasonicLeftEnabled_; }
+    bool isUltrasonicRightEnabled() const { return ultrasonicRightEnabled_; }
+    bool isBeamBreakEnabled() const { return beamBreakEnabled_; }
+};
+
 /**
  * Represents a subscription to an event type
  * Contains both the callback function and its priority

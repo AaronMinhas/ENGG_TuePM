@@ -49,15 +49,21 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   // Global simulation toggles
   if (cmd == "sim on" || cmd == "simulation on")
   {
-    // Simulation mode now applies to sensors only; motor remains manual/physical
+    // Enable simulation mode for both sensors and motor control
     detect_.setSimulationMode(true);
-    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE ENABLED (ultrasonic only; motor remains manual)");
+    motor_.setSimulationMode(true);
+    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE ENABLED (sensors + motor control)");
+    auto* simOn = new SimpleEventData(BridgeEvent::SIMULATION_ENABLED);
+    eventBus_.publish(BridgeEvent::SIMULATION_ENABLED, simOn, EventPriority::NORMAL);
     return true;
   }
   if (cmd == "sim off" || cmd == "simulation off")
   {
     detect_.setSimulationMode(false);
-    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (ultrasonic)");
+    motor_.setSimulationMode(false);
+    LOG_INFO(Logger::TAG_CON, "SIMULATION MODE DISABLED (sensors + motor control)");
+    auto* simOff = new SimpleEventData(BridgeEvent::SIMULATION_DISABLED);
+    eventBus_.publish(BridgeEvent::SIMULATION_DISABLED, simOff, EventPriority::NORMAL);
     auto* resetData = new SimpleEventData(BridgeEvent::SYSTEM_RESET_REQUESTED);
     eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
     LOG_INFO(Logger::TAG_CON, "System reset requested after exiting simulation mode");
@@ -65,8 +71,19 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   }
   
   // Motor commands (mirroring existing strings)
-  if (cmd == "raise" || cmd == "r") { motor_.raiseBridge(); return true; }
-  if (cmd == "lower" || cmd == "l") { motor_.lowerBridge(); return true; }
+  // These commands trigger manual mode via the state machine
+  if (cmd == "raise" || cmd == "r") {
+    auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED);
+    eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED, eventData);
+    LOG_INFO(Logger::TAG_CON, "Console: Manual bridge open requested");
+    return true;
+  }
+  if (cmd == "lower" || cmd == "l") {
+    auto* eventData = new SimpleEventData(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED);
+    eventBus_.publish(BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED, eventData);
+    LOG_INFO(Logger::TAG_CON, "Console: Manual bridge close requested");
+    return true;
+  }
   if (cmd == "halt"  || cmd == "h" || cmd == "stop") { motor_.halt(); return true; }
 
 
@@ -83,16 +100,12 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
     LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat detected from RIGHT side");
     return true;
   }
-  if (cmd == "test boat pass left" || cmd == "tbpl") {
-    auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED_LEFT, BoatEventSide::LEFT);
-    eventBus_.publish(BridgeEvent::BOAT_PASSED_LEFT, eventData);
-    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat passing through LEFT side");
-    return true;
-  }
-  if (cmd == "test boat pass right" || cmd == "tbpr") {
-    auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED_RIGHT, BoatEventSide::RIGHT);
-    eventBus_.publish(BridgeEvent::BOAT_PASSED_RIGHT, eventData);
-    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat passing through RIGHT side");
+  if (cmd == "test boat pass" || cmd == "tbp") {
+    // Trigger generic boat passed event (direction-agnostic)
+    // In real operation, beam break sensor determines direction automatically
+    auto* eventData = new BoatEventData(BridgeEvent::BOAT_PASSED, BoatEventSide::LEFT);
+    eventBus_.publish(BridgeEvent::BOAT_PASSED, eventData);
+    LOG_INFO(Logger::TAG_CON, "TEST: Simulated boat cleared channel (beam break)");
     return true;
   }
 
@@ -150,6 +163,13 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
     const bool enable = (limitStreamEnabled_ == false);
     limitStreamEnabled_ = enable;
     LOG_INFO(Logger::TAG_MC, "LIMIT SWITCH STREAM: %s", enable ? "enabled" : "disabled");
+    return true;
+  }
+  
+  // Test limit switch press (simulates motor reaching limit)
+  if (cmd == "test limit" || cmd == "tl") {
+    LOG_INFO(Logger::TAG_CON, "TEST: Simulating limit switch press");
+    motor_.simulateLimitSwitchPress();
     return true;
   }
 
@@ -226,10 +246,10 @@ void ConsoleCommands::printHelp()
   Serial.println("  usl                       - Toggle ultrasonic streaming for left sensor only");
   Serial.println("  usr                       - Toggle ultrasonic streaming for right sensor only");
   Serial.println("  === Test/Simulation Commands ===");
-  Serial.println("  test boat left|tbl       - Simulate boat from LEFT (exits RIGHT)");
-  Serial.println("  test boat right|tbr      - Simulate boat from RIGHT (exits LEFT)");
-  Serial.println("  test boat pass left|tbpl - Simulate boat exiting LEFT side");
-  Serial.println("  test boat pass right|tbpr - Simulate boat exiting RIGHT side");
+  Serial.println("  test boat left|tbl       - Simulate boat detected from LEFT");
+  Serial.println("  test boat right|tbr      - Simulate boat detected from RIGHT");
+  Serial.println("  test boat pass|tbp       - Simulate boat cleared channel (beam break)");
+  Serial.println("  test limit|tl            - Simulate limit switch press (triggers normal stop)");
   Serial.println("  car light <colour>|cl <colour>  - Set car lights (red/yellow/green)");
   Serial.println("  boat light <side> <colour>|bl <side> <colour>  - Set boat lights (left/right, red/green)");
   Serial.println("  lights status|ls          - Show light control status");
@@ -255,6 +275,15 @@ void ConsoleCommands::printStatus()
            detect_.isSimulationMode() ? "SIM" : "REAL",
            (rightDist > 0 ? String(rightDist, 1).c_str() : "unknown"),
            detect_.getRightZoneName());
+
+  if (detect_.isSimulationMode())
+  {
+    auto simConfig = detect_.getSimulationSensorConfig();
+    LOG_INFO(Logger::TAG_DS, "SIM SENSORS: ultrasonicLeft=%s, ultrasonicRight=%s, beamBreak=%s",
+             simConfig.ultrasonicLeftEnabled ? "ENABLED" : "DISABLED",
+             simConfig.ultrasonicRightEnabled ? "ENABLED" : "DISABLED",
+             simConfig.beamBreakEnabled ? "ENABLED" : "DISABLED");
+  }
 }
 
 void ConsoleCommands::handleStreaming()

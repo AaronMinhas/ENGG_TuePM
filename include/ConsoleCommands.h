@@ -15,6 +15,10 @@ public:
   void begin();
   void poll();   // non-blocking; call frequently
   bool executeCommand(const String& raw);  // exposed for remote invocation
+  
+  // Get current ultrasonic streaming state
+  bool isStreamingLeft() const { return (streamMask_ & STREAM_LEFT) != 0; }
+  bool isStreamingRight() const { return (streamMask_ & STREAM_RIGHT) != 0; }
 
 private:
   MotorControl& motor_;

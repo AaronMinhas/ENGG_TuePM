@@ -17,12 +17,15 @@ public:
     void testMotor();      // For initial testing
 
     // Simulation mode control (for external CLI router)
-    void setSimulationMode(bool enable) { m_simulationMode = enable; }
+    void setSimulationMode(bool enable);
     bool isSimulationMode() const { return m_simulationMode; }
+
+    // Simulation limit switch control
+    void simulateLimitSwitchPress();  // Simulate limit switch trigger for testing
 
     // Limit switch diagnostics
     int getLimitSwitchRaw() const { return digitalRead(LIMIT_SWITCH_PIN); }
-    bool isLimitSwitchActive() const { return getLimitSwitchRaw() == LIMIT_SWITCH_ACTIVE_STATE; }
+    bool isLimitSwitchActive() const;
 
 private:
     EventBus& m_eventBus;
@@ -44,6 +47,9 @@ private:
     bool m_raisingBridge;
     bool m_simulationMode;           // Toggle for simulation/test mode
     bool m_limitCleared;
+    
+    // Simulation variables
+    bool m_simulatedLimitPressed;    // Simulated limit switch state
     
     // Grace handling
     bool m_inGracePeriod;

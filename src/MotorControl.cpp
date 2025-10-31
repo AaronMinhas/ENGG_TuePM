@@ -9,6 +9,7 @@ MotorControl::MotorControl(EventBus& eventBus)
       m_raisingBridge(false),
       m_simulationMode(false),      // Start in real mode by default
       m_limitCleared(false),
+      m_simulatedLimitPressed(false),
       m_inGracePeriod(false),
       m_graceEndsAt(0) {
 }
@@ -45,6 +46,7 @@ void MotorControl::raiseBridge() {
     
     m_raisingBridge = true;
     m_motorRunning = true;
+    m_simulatedLimitPressed = false;  // Reset simulation flag
     m_limitCleared = !isLimitSwitchActive();
     m_inGracePeriod = false;
     m_graceEndsAt = 0;
@@ -68,6 +70,7 @@ void MotorControl::lowerBridge() {
     
     m_raisingBridge = false;
     m_motorRunning = true;
+    m_simulatedLimitPressed = false;  // Reset simulation flag
     m_limitCleared = !isLimitSwitchActive();
     m_inGracePeriod = false;
     m_graceEndsAt = 0;
@@ -133,6 +136,38 @@ void MotorControl::halt() {
     LOG_WARN(Logger::TAG_MC, "Motor stopped immediately");
 }
 
+bool MotorControl::isLimitSwitchActive() const {
+    // In simulation mode, use simulated limit switch state
+    if (m_simulationMode && m_simulatedLimitPressed) {
+        return true;
+    }
+    // Otherwise read from physical GPIO
+    return getLimitSwitchRaw() == LIMIT_SWITCH_ACTIVE_STATE;
+}
+
+void MotorControl::setSimulationMode(bool enable) {
+    m_simulationMode = enable;
+    LOG_INFO(Logger::TAG_MC, "MOTOR: Simulation mode %s", enable ? "ENABLED" : "DISABLED");
+}
+
+void MotorControl::simulateLimitSwitchPress() {
+    if (!m_simulationMode) {
+        LOG_WARN(Logger::TAG_MC, "Cannot simulate limit switch - not in simulation mode");
+        return;
+    }
+    
+    if (!m_motorRunning) {
+        LOG_WARN(Logger::TAG_MC, "Cannot simulate limit switch - motor not running");
+        return;
+    }
+    
+    LOG_INFO(Logger::TAG_MC, "Simulating limit switch press (normal stop)");
+    m_simulatedLimitPressed = true;
+    
+    // Let checkProgress() handle the rest naturally on next iteration
+    // This simulates the physical limit switch being pressed
+}
+
 void MotorControl::testMotor() {
     LOG_INFO(Logger::TAG_MC, "Starting motor test sequence...");
     
@@ -183,6 +218,7 @@ void MotorControl::stopMotor() {
     
     m_motorRunning = false;
     m_limitCleared = false;
+    m_simulatedLimitPressed = false;  // Reset simulation flag
     m_inGracePeriod = false;
     m_graceEndsAt = 0;
     

@@ -22,8 +22,8 @@ export default function DashCard(props: Readonly<DashCardProp>) {
       <div className="w-full h-full bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
         <div className="flex justify-between items-center">
           <div className="flex gap-2">
-            {Icon ? <Icon size={22} /> : null}
-            <span className="font-semibold">{props.title}</span>
+            {Icon ? <Icon size={22} className="text-gray-700" /> : null}
+            <span className="font-semibold text-gray-900">{props.title}</span>
           </div>
         </div>
 
@@ -48,7 +48,7 @@ export default function DashCard(props: Readonly<DashCardProp>) {
           </div>
         </div>
 
-        <span className="text-sm">{props.updatedAt}</span>
+        <span className="text-sm text-gray-600">{props.updatedAt}</span>
       </div>
     );
   }
@@ -61,8 +61,8 @@ export default function DashCard(props: Readonly<DashCardProp>) {
     <div className="w-full h-full bg-white p-4 flex flex-col justify-center rounded-md border cursor-default border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] space-y-2">
       <div className="flex justify-between items-center">
         <div className="flex gap-2">
-          {Icon ? <Icon size={22} /> : null}
-          <span className="font-semibold">{title}</span>
+          {Icon ? <Icon size={22} className="text-gray-700" /> : null}
+          <span className="font-semibold text-gray-900">{title}</span>
         </div>
       </div>
 
@@ -75,11 +75,11 @@ export default function DashCard(props: Readonly<DashCardProp>) {
             disabled={disabled}
           />
         ) : (
-          <span className="text-2xl font-bold">{description}</span>
+          <span className="text-2xl font-bold text-gray-900">{description}</span>
         )}
       </div>
 
-      <span className="text-sm">{updatedAt}</span>
+      <span className="text-sm text-gray-600">{updatedAt}</span>
     </div>
   );
 }
@@ -116,11 +116,23 @@ function getStatusColour(status?: Status): string {
       break;
 
     case "bridge":
-      if (status.value === "Opening") return "bg-orange-500";
-      if (status.value === "Closing") return "bg-yellow-400";
-      if (status.value === "Closed") return "bg-red-300";
-      if (status.value === "Open") return "bg-orange-300";
-      if (status.value === "Error") return "bg-red-500";
+      // Idle/Safe states
+      if (status.value === "IDLE") return "bg-green-500";
+      // Traffic management states
+      if (status.value === "STOPPING_TRAFFIC") return "bg-yellow-500";
+      if (status.value === "RESUMING_TRAFFIC") return "bg-yellow-400";
+      // Bridge operation states
+      if (status.value === "OPENING") return "bg-orange-500";
+      if (status.value === "OPEN") return "bg-orange-300";
+      if (status.value === "CLOSING") return "bg-yellow-400";
+      // Manual control states
+      if (status.value === "MANUAL_MODE") return "bg-blue-400";
+      if (status.value === "MANUAL_OPENING") return "bg-blue-500";
+      if (status.value === "MANUAL_OPEN") return "bg-blue-300";
+      if (status.value === "MANUAL_CLOSING") return "bg-blue-400";
+      if (status.value === "MANUAL_CLOSED") return "bg-blue-300";
+      // Error state
+      if (status.value === "FAULT") return "bg-red-500";
       break;
   }
   return "bg-gray-400";

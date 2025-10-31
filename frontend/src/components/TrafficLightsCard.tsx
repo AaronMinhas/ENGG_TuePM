@@ -7,6 +7,7 @@ import {
 } from "../lib/schema";
 import { CustomDropdown } from "./CustomDropdown";
 import { timeAgo } from "../utils/timeAgo";
+import { TrafficCone, Anchor } from "lucide-react";
 
 interface TrafficLightsCardProps {
   carTrafficStatus: CarTrafficStatus | null;
@@ -38,24 +39,21 @@ export default function TrafficLightsCard({
 
   return (
     <div
-      className={`w-full bg-white px-4 py-3 flex flex-col rounded-md border border-base-300 shadow-[0_0_1px_rgba(0,0,0,0.2)] space-y-3 ${
+      className={`w-full rounded-md border border-base-300 bg-gray-50 p-3 ${
         disabled ? "opacity-80" : ""
       } ${className}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <span className="font-semibold">Traffic Lights</span>
-          {carUpdatedAt || boatUpdatedAt ? (
-            <p className="text-xs text-gray-500 mt-0.5">
-              Car: {carUpdatedAt || "—"} • Boat: {boatUpdatedAt || "—"}
-            </p>
-          ) : null}
-        </div>
+      <div className="flex items-center gap-2 mb-2">
+        <TrafficCone size={14} className="text-orange-600" />
+        <p className="text-sm font-semibold text-gray-900">Traffic Lights</p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-        <section className="flex flex-col gap-2">
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Car Traffic</p>
+      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+        {/* Car Traffic */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-gray-700 uppercase">Car</p>
+          </div>
           <CustomDropdown
             options={[
               { id: "traffic-car-red", label: "Red", action: () => onCarTrafficChange("Red") },
@@ -67,18 +65,16 @@ export default function TrafficLightsCard({
             disabled={disabled}
             compact
           />
-          <p className="text-[11px] text-gray-500">
-            L:{carTrafficStatus?.left.value ?? "?"} • R:{carTrafficStatus?.right.value ?? "?"}
-          </p>
-        </section>
+        </div>
 
-        <section className="flex flex-col gap-2">
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Boat Traffic</p>
-          <div className="grid gap-2 sm:grid-cols-2">
+        {/* Boat Traffic */}
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold text-gray-700 uppercase">Boat</p>
+          <div className="grid gap-1.5 grid-cols-2">
             <CustomDropdown
               options={[
-                { id: "traffic-boat-left-red", label: "Left Red", action: () => onBoatTrafficChange("left", "Red") },
-                { id: "traffic-boat-left-green", label: "Left Green", action: () => onBoatTrafficChange("left", "Green") },
+                { id: "traffic-boat-left-red", label: "L Red", action: () => onBoatTrafficChange("left", "Red") },
+                { id: "traffic-boat-left-green", label: "L Green", action: () => onBoatTrafficChange("left", "Green") },
               ]}
               selected={boatLeftValue}
               colour={getBoatColour(boatLeftValue as BoatTrafficState | "")}
@@ -87,8 +83,8 @@ export default function TrafficLightsCard({
             />
             <CustomDropdown
               options={[
-                { id: "traffic-boat-right-red", label: "Right Red", action: () => onBoatTrafficChange("right", "Red") },
-                { id: "traffic-boat-right-green", label: "Right Green", action: () => onBoatTrafficChange("right", "Green") },
+                { id: "traffic-boat-right-red", label: "R Red", action: () => onBoatTrafficChange("right", "Red") },
+                { id: "traffic-boat-right-green", label: "R Green", action: () => onBoatTrafficChange("right", "Green") },
               ]}
               selected={boatRightValue}
               colour={getBoatColour(boatRightValue as BoatTrafficState | "")}
@@ -96,7 +92,7 @@ export default function TrafficLightsCard({
               compact
             />
           </div>
-        </section>
+        </div>
       </div>
     </div>
   );

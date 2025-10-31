@@ -125,8 +125,14 @@ void Controller::resetToIdleState() {
     m_motorControl.halt();
     m_signalControl.resetToIdleState();
 
-    // Ensure bridge returns to closed position after halt
-    m_motorControl.lowerBridge();
+    // Only drive the bridge closed if we're not currently sitting on a limit
+    if (!m_motorControl.isLimitSwitchActive()) {
+        // Ensure bridge returns to closed position after halt
+        m_motorControl.lowerBridge();
+        LOG_INFO(Logger::TAG_CMD, "Limit not active on reset -> issuing lowerBridge()");
+    } else {
+        LOG_INFO(Logger::TAG_CMD, "Limit is active on reset -> skipping motor movement");
+    }
 
-    LOG_INFO(Logger::TAG_CMD, "Idle reset sequence issued");
+    LOG_INFO(Logger::TAG_CMD, "Idle reset sequence processed");
 }

@@ -33,12 +33,26 @@ export type RequestMsgT = z.infer<typeof RequestMsg>;
 export type ResponseMsgT = z.infer<typeof ResponseMsg>;
 export type EventMsgT = z.infer<typeof EventMsg>;
 
-export type BridgeState = "Opening" | "Closing" | "Open" | "Closed" | "Error";
+export type BridgeState = 
+  | "IDLE"
+  | "STOPPING_TRAFFIC" 
+  | "OPENING" 
+  | "OPEN" 
+  | "CLOSING" 
+  | "RESUMING_TRAFFIC"
+  | "FAULT"
+  | "MANUAL_MODE"
+  | "MANUAL_OPENING"
+  | "MANUAL_OPEN"
+  | "MANUAL_CLOSING"
+  | "MANUAL_CLOSED";
 export interface BridgeStatus {
   state: BridgeState;
   lastChangeMs: number;
   lockEngaged: boolean;
   receivedAt?: number;
+  boatTimerStartMs?: number;  // ESP32 millis when boat green period started (0 = inactive)
+  boatTimerSide?: string;      // Which side has green ("left" or "right", empty if inactive)
 }
 
 export interface TrafficLightStatus<TLight> {
@@ -58,11 +72,27 @@ export interface BoatTrafficStatus {
   right: TrafficLightStatus<BoatTrafficState>;
 }
 
+export interface SimulationSensorsStatus {
+  ultrasonicLeft: boolean;
+  ultrasonicRight: boolean;
+  beamBreak: boolean;
+}
+
+export interface UltrasonicStreamingStatus {
+  left: boolean;
+  right: boolean;
+}
+
 export type SystemState = "Connected" | "Connecting" | "Disconnected";
+export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR" | "NONE";
 export interface SystemStatus {
   connection: SystemState;
   rssi?: number;
   uptimeMs?: number;
+  simulation?: boolean;
+  simulationSensors?: SimulationSensorsStatus;
+  ultrasonicStreaming?: UltrasonicStreamingStatus;
+  logLevel?: LogLevel;
   receivedAt?: number;
 }
 
@@ -76,7 +106,7 @@ export type TimedBridgeStatus = Timed<BridgeStatus>;
 
 export interface ResetResponse {
   bridge?: {
-    state?: string;
+    state?: BridgeState;
     lastChangeMs?: number;
     lockEngaged?: boolean;
     manualMode?: boolean;

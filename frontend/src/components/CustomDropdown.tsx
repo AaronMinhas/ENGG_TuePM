@@ -39,7 +39,7 @@ export function CustomDropdown(props: Readonly<CustomDropdownProps>) {
       >
         <div className="flex gap-2 items-center">
           {colour && <span className={`w-5 h-5 rounded-full ${colour}`} />}
-          <span>{selected || "---"}</span>
+          <span className="text-gray-900">{selected || "---"}</span>
         </div>
         <ChevronDown
           className={`opacity-100 lg:opacity-0 text-base-600 group-hover:opacity-100 transition-transform ${
@@ -57,7 +57,7 @@ export function CustomDropdown(props: Readonly<CustomDropdownProps>) {
                 opt.action();
                 setOpen(false);
               }}
-              className="px-3 py-2 cursor-pointer hover:bg-gray-100 rounded-md"
+              className="px-3 py-2 cursor-pointer hover:bg-gray-100 rounded-md text-gray-900"
             >
               {opt.label}
             </li>

@@ -235,8 +235,9 @@ void DetectionSystem::checkInitialDetection()
     auto handleDetection = [&](const char* sensorName,
                                BoatDirection direction,
                                BoatEventSide eventSide,
-                               BridgeEvent sideEvent) {
-        if (!m_simulationMode)
+                               BridgeEvent sideEvent,
+                               bool allowEvents) {
+        if (allowEvents)
         {
             LOG_INFO(Logger::TAG_DS, "%s SENSOR: BOAT_DETECTED (debounced) - Direction: %s TO %s",
                      sensorName,
@@ -251,7 +252,7 @@ void DetectionSystem::checkInitialDetection()
         }
         else
         {
-            LOG_INFO(Logger::TAG_DS, "%s SENSOR: SIM MODE - detection suppressed", sensorName);
+            LOG_INFO(Logger::TAG_DS, "%s SENSOR: SIM MODE - detection suppressed (sensor disabled)", sensorName);
         }
 
         if (!boatDetected)
@@ -280,8 +281,10 @@ void DetectionSystem::checkInitialDetection()
                              const char* sensorName,
                              BoatDirection direction,
                              BoatEventSide eventSide,
-                             BridgeEvent sideEvent) {
+                             BridgeEvent sideEvent,
+                             bool isLeftSensor) {
         const bool isPriority = (pendingPriorityDirection == direction);
+        const bool allowEvents = allowUltrasonicEvents(isLeftSensor);
 
         if (!approachActive)
         {
@@ -328,7 +331,7 @@ void DetectionSystem::checkInitialDetection()
                 pendingPriorityDirection = BoatDirection::NONE;
             }
 
-            handleDetection(sensorName, direction, eventSide, sideEvent);
+            handleDetection(sensorName, direction, eventSide, sideEvent, allowEvents);
         }
     };
 
@@ -341,7 +344,8 @@ void DetectionSystem::checkInitialDetection()
                   "LEFT",
                   BoatDirection::LEFT_TO_RIGHT,
                   BoatEventSide::LEFT,
-                  BridgeEvent::BOAT_DETECTED_LEFT);
+                  BridgeEvent::BOAT_DETECTED_LEFT,
+                  true);
 
     const int currentRightZone = (rightLastZone < 0) ? 3 : rightLastZone;
     processSensor(rightEmaDistanceCm,
@@ -352,13 +356,15 @@ void DetectionSystem::checkInitialDetection()
                   "RIGHT",
                   BoatDirection::RIGHT_TO_LEFT,
                   BoatEventSide::RIGHT,
-                  BridgeEvent::BOAT_DETECTED_RIGHT);
+                  BridgeEvent::BOAT_DETECTED_RIGHT,
+                  false);
 }
 
 // Check if boat has passed through and exited on the other side
 void DetectionSystem::checkBoatPassed()
 {
     const unsigned long now = millis();
+    const bool allowBeamEvents = allowBeamBreakEvents();
 
     const bool currentBeamBroken = readBeamBreak();
 
@@ -371,11 +377,15 @@ void DetectionSystem::checkBoatPassed()
             beamBrokenEnterMs = now;
             beamClearEnterMs = 0;
 
-            if (!m_simulationMode)
+            if (allowBeamEvents)
             {
                 LOG_INFO(Logger::TAG_DS, "BEAM BREAK: Boat occupying channel");
                 auto* activeData = new SimpleEventData(BridgeEvent::BEAM_BREAK_ACTIVE);
                 m_eventBus.publish(BridgeEvent::BEAM_BREAK_ACTIVE, activeData, EventPriority::EMERGENCY);
+            }
+            else
+            {
+                LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - occupancy suppressed (sensor disabled)");
             }
         }
         return;
@@ -421,7 +431,7 @@ void DetectionSystem::checkBoatPassed()
     }
     boatDirection = BoatDirection::NONE;
 
-    if (!m_simulationMode)
+    if (allowBeamEvents)
     {
         LOG_INFO(Logger::TAG_DS, "BEAM BREAK: Boat clear (debounced)");
 
@@ -446,7 +456,7 @@ void DetectionSystem::checkBoatPassed()
     }
     else
     {
-        LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - passed event suppressed");
+        LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - passed event suppressed (sensor disabled)");
     }
 
     if (!pendingBoatDirections.empty())
@@ -474,11 +484,88 @@ void DetectionSystem::setSimulationMode(bool enable)
 {
     m_simulationMode = enable;
     LOG_INFO(Logger::TAG_DS, "ULTRASONIC: Simulation mode %s", enable ? "ENABLED" : "DISABLED");
+    if (enable)
+    {
+        m_simUltrasonicLeftEnabled = false;
+        m_simUltrasonicRightEnabled = false;
+        m_simBeamBreakEnabled = false;
+    }
+    else
+    {
+        m_simUltrasonicLeftEnabled = true;
+        m_simUltrasonicRightEnabled = true;
+        m_simBeamBreakEnabled = true;
+    }
+    publishSimulationSensorConfig();
 }
 
 bool DetectionSystem::isSimulationMode() const
 {
     return m_simulationMode;
+}
+
+void DetectionSystem::setSimulationUltrasonicEnabled(bool leftEnabled, bool rightEnabled)
+{
+    m_simUltrasonicLeftEnabled = leftEnabled;
+    m_simUltrasonicRightEnabled = rightEnabled;
+    publishSimulationSensorConfig();
+}
+
+void DetectionSystem::setSimulationUltrasonicLeftEnabled(bool enabled)
+{
+    if (m_simUltrasonicLeftEnabled == enabled) return;
+    m_simUltrasonicLeftEnabled = enabled;
+    publishSimulationSensorConfig();
+}
+
+void DetectionSystem::setSimulationUltrasonicRightEnabled(bool enabled)
+{
+    if (m_simUltrasonicRightEnabled == enabled) return;
+    m_simUltrasonicRightEnabled = enabled;
+    publishSimulationSensorConfig();
+}
+
+void DetectionSystem::setSimulationBeamBreakEnabled(bool enabled)
+{
+    if (m_simBeamBreakEnabled == enabled) return;
+    m_simBeamBreakEnabled = enabled;
+    publishSimulationSensorConfig();
+}
+
+DetectionSystem::SimulationSensorConfig DetectionSystem::getSimulationSensorConfig() const
+{
+    return {
+        m_simUltrasonicLeftEnabled,
+        m_simUltrasonicRightEnabled,
+        m_simBeamBreakEnabled
+    };
+}
+
+bool DetectionSystem::allowUltrasonicEvents(bool leftSensor) const
+{
+    if (!m_simulationMode)
+    {
+        return true;
+    }
+    return leftSensor ? m_simUltrasonicLeftEnabled : m_simUltrasonicRightEnabled;
+}
+
+bool DetectionSystem::allowBeamBreakEvents() const
+{
+    if (!m_simulationMode)
+    {
+        return true;
+    }
+    return m_simBeamBreakEnabled;
+}
+
+void DetectionSystem::publishSimulationSensorConfig() const
+{
+    auto* payload = new SimulationSensorConfigData(
+        allowUltrasonicEvents(true),
+        allowUltrasonicEvents(false),
+        allowBeamBreakEvents());
+    m_eventBus.publish(BridgeEvent::SIMULATION_SENSOR_CONFIG_CHANGED, payload, EventPriority::NORMAL);
 }
 
 // Getter methods for UI/monitoring

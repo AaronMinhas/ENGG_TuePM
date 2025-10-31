@@ -65,7 +65,7 @@ export default function DesktopDashboard({
           { id: "d-c-y", label: "Yellow", action: () => handleCarTraffic("Yellow") },
           { id: "d-c-g", label: "Green", action: () => handleCarTraffic("Green") },
         ]}
-        description={`L:${carTrafficStatus?.left.value || "?"} R:${carTrafficStatus?.right.value || "?"}`}
+        description={carTrafficStatus?.left.value || carTrafficStatus?.right.value || ""}
         updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
         status={
           carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
@@ -100,7 +100,7 @@ export default function DesktopDashboard({
         disabled={controlsDisabled}
       />
       <div className="row-span-4">
-        <ActivitySec log={activityLog} />
+        <ActivitySec log={activityLog} bridgeState={bridgeStatus?.state} />
       </div>
 
       <DashCard
@@ -113,7 +113,11 @@ export default function DesktopDashboard({
         status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
       />
       <div className="col-span-2 row-span-3">
-        <BridgeCard bridgeStatus={bridgeStatus} />
+        <BridgeCard 
+          bridgeStatus={bridgeStatus} 
+          carTrafficStatus={carTrafficStatus}
+          boatTrafficStatus={boatTrafficStatus}
+        />
       </div>
 
       <DashCard

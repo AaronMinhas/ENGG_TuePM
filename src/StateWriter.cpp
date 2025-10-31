@@ -1,6 +1,12 @@
 #include "StateWriter.h"
+#include "Logger.h"
+#include "ConsoleCommands.h"
 
 StateWriter::StateWriter(EventBus& bus) : bus_(bus) {}
+
+void StateWriter::attachConsole(ConsoleCommands* console) {
+    console_ = console;
+}
 
 // Below subscribes all events that the FSM / subsystems publish.
 void StateWriter::beginSubscriptions() {
@@ -27,7 +33,11 @@ void StateWriter::beginSubscriptions() {
     bus_.subscribe(E::SYSTEM_SAFE_SUCCESS, sub);
     bus_.subscribe(E::CAR_LIGHT_CHANGED_SUCCESS, sub);
     bus_.subscribe(E::BOAT_LIGHT_CHANGED_SUCCESS, sub);
+    bus_.subscribe(E::BOAT_GREEN_PERIOD_EXPIRED, sub);
     bus_.subscribe(E::SYSTEM_RESET_REQUESTED, sub);
+    bus_.subscribe(E::SIMULATION_ENABLED, sub);
+    bus_.subscribe(E::SIMULATION_DISABLED, sub);
+    bus_.subscribe(E::SIMULATION_SENSOR_CONFIG_CHANGED, sub);
     
     // Subscribe to actual state changes from the state machine
     bus_.subscribe(E::STATE_CHANGED, sub);
@@ -38,6 +48,15 @@ void StateWriter::fillBridgeStatus(JsonObject obj) const {
     obj["state"] = bridgeState_;
     obj["lastChangeMs"] = bridgeLastChangeMs_;
     obj["manualMode"]   = manualMode_;
+    
+    // Include boat timer info if active
+    if (boatTimerStartMs_ > 0) {
+        obj["boatTimerStartMs"] = boatTimerStartMs_;
+        obj["boatTimerSide"] = boatTimerSide_;
+    } else {
+        obj["boatTimerStartMs"] = 0;
+        obj["boatTimerSide"] = "";
+    }
 }
 
 void StateWriter::fillCarTrafficStatus(JsonObject obj) const {
@@ -59,6 +78,19 @@ void StateWriter::fillBoatTrafficStatus(JsonObject obj) const {
 void StateWriter::fillSystemStatus(JsonObject obj) const {
     std::lock_guard<std::mutex> lk(mu_);
     obj["connection"] = "Connected";
+    obj["simulation"] = simulationMode_;
+    obj["logLevel"] = Logger::levelToString(Logger::getLevel());
+    JsonObject sensors = obj["simulationSensors"].to<JsonObject>();
+    sensors["ultrasonicLeft"] = simUltrasonicLeftEnabled_;
+    sensors["ultrasonicRight"] = simUltrasonicRightEnabled_;
+    sensors["beamBreak"] = simBeamBreakEnabled_;
+    
+    // Ultrasonic streaming state
+    if (console_) {
+        JsonObject streaming = obj["ultrasonicStreaming"].to<JsonObject>();
+        streaming["left"] = console_->isStreamingLeft();
+        streaming["right"] = console_->isStreamingRight();
+    }
 }
 
 void StateWriter::buildSnapshot(JsonDocument& out) const {
@@ -66,20 +98,20 @@ void StateWriter::buildSnapshot(JsonDocument& out) const {
     out["v"] = 1;
     out["type"] = "event";
     out["path"] = "/system/snapshot";
-    JsonObject p = out.createNestedObject("payload");
+    JsonObject p = out["payload"].to<JsonObject>();
 
     // sections
-    JsonObject bridge = p.createNestedObject("bridge");
+    JsonObject bridge = p["bridge"].to<JsonObject>();
     fillBridgeStatus(bridge);
 
-    JsonObject traffic = p.createNestedObject("traffic");
-    fillCarTrafficStatus(traffic.createNestedObject("car"));
-    fillBoatTrafficStatus(traffic.createNestedObject("boat"));
+    JsonObject traffic = p["traffic"].to<JsonObject>();
+    fillCarTrafficStatus(traffic["car"].to<JsonObject>());
+    fillBoatTrafficStatus(traffic["boat"].to<JsonObject>());
 
-    JsonObject system = p.createNestedObject("system");
+    JsonObject system = p["system"].to<JsonObject>();
     fillSystemStatus(system);
 
-    JsonArray logArr = p.createNestedArray("log");
+    JsonArray logArr = p["log"].to<JsonArray>();
     {
         std::lock_guard<std::mutex> lk(mu_);
         for (const auto& s : log_) logArr.add(s);
@@ -116,6 +148,25 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
                 }
             }
             break;
+        case BridgeEvent::SIMULATION_ENABLED:
+            simulationMode_ = true;
+            pushLog("Simulation mode ENABLED");
+            break;
+        case BridgeEvent::SIMULATION_DISABLED:
+            simulationMode_ = false;
+            pushLog("Simulation mode DISABLED");
+            break;
+        case BridgeEvent::SIMULATION_SENSOR_CONFIG_CHANGED:
+            if (data && data->getEventEnum() == BridgeEvent::SIMULATION_SENSOR_CONFIG_CHANGED) {
+                auto* cfgData = static_cast<SimulationSensorConfigData*>(data);
+                simUltrasonicLeftEnabled_ = cfgData->isUltrasonicLeftEnabled();
+                simUltrasonicRightEnabled_ = cfgData->isUltrasonicRightEnabled();
+                simBeamBreakEnabled_ = cfgData->isBeamBreakEnabled();
+                pushLog(String("Simulation sensors updated: UL=") + (simUltrasonicLeftEnabled_ ? "ON" : "OFF") +
+                        ", UR=" + (simUltrasonicRightEnabled_ ? "ON" : "OFF") +
+                        ", Beam=" + (simBeamBreakEnabled_ ? "ON" : "OFF"));
+            }
+            break;
             
         case BridgeEvent::MANUAL_BRIDGE_OPEN_REQUESTED:
             // Log the request but don't change state - wait for STATE_CHANGED
@@ -149,8 +200,9 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
         case BridgeEvent::BRIDGE_OPENED_SUCCESS:
             bridgeLockEngaged_ = false;
             bridgeLastChangeMs_ = now;
-            boatLeft_ = boatRight_ = "Green";
-            pushLog(String("Bridge opened; boat lights now ") + boatLeft_ + "/" + boatRight_);
+            // Boat lights are set by startBoatGreenPeriod() which publishes BOAT_LIGHT_CHANGED_SUCCESS events
+            // Don't override them here - let the individual light change events handle it
+            pushLog("Bridge opened");
             break;
         case BridgeEvent::BOAT_PASSED:
             pushLog("Event: BOAT_PASSED");
@@ -172,7 +224,8 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             pushLog(String("Traffic resumed; car lights now ") + carLeft_ + "/" + carRight_);
             break;
         case BridgeEvent::INDICATOR_UPDATE_SUCCESS:
-            pushLog("Indicator status refreshed");
+            // Indicator LED updated - no need to log every state change
+            // (State changes are already logged via STATE_CHANGED events)
             break;
         case BridgeEvent::FAULT_DETECTED:
             inFault_ = true;
@@ -230,13 +283,32 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             // Handle individual boat light changes
             if (data && data->getEventEnum() == BridgeEvent::BOAT_LIGHT_CHANGED_SUCCESS) {
                 auto* lightData = static_cast<LightChangeData*>(data);
-                if (lightData->getSide() == "left") {
-                    boatLeft_ = lightData->getColor();
-                } else if (lightData->getSide() == "right") {
-                    boatRight_ = lightData->getColor();
+                const String& side = lightData->getSide();
+                const String& color = lightData->getColor();
+                
+                if (side == "left") {
+                    boatLeft_ = color;
+                } else if (side == "right") {
+                    boatRight_ = color;
                 }
-                pushLog(String("Boat light (") + lightData->getSide() + ") set to " + lightData->getColor());
+                
+                // Track boat timer: if a side turns green, start timer. If both turn red, stop timer.
+                if (color == "Green") {
+                    boatTimerStartMs_ = now;
+                    boatTimerSide_ = side;
+                } else if (color == "Red" && (boatLeft_ == "Red" && boatRight_ == "Red")) {
+                    // Both lights red = timer inactive
+                    boatTimerStartMs_ = 0;
+                    boatTimerSide_ = "";
+                }
+                
+                pushLog(String("Boat light (") + side + ") set to " + color);
             }
+            break;
+        case BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED:
+            // Timer expired - reset timer state
+            boatTimerStartMs_ = 0;
+            boatTimerSide_ = "";
             break;
         default:
             pushLog(String("Event: ") + eventName(ev));
@@ -272,6 +344,7 @@ const char* StateWriter::eventName(BridgeEvent ev) {
     case BridgeEvent::MANUAL_BRIDGE_CLOSE_REQUESTED: return "MANUAL_BRIDGE_CLOSE_REQUESTED";
     case BridgeEvent::MANUAL_TRAFFIC_STOP_REQUESTED: return "MANUAL_TRAFFIC_STOP_REQUESTED";
     case BridgeEvent::MANUAL_TRAFFIC_RESUME_REQUESTED: return "MANUAL_TRAFFIC_RESUME_REQUESTED";
+    case BridgeEvent::SIMULATION_SENSOR_CONFIG_CHANGED: return "SIMULATION_SENSOR_CONFIG_CHANGED";
     case BridgeEvent::STATE_CHANGED: return "STATE_CHANGED";
     default: return "UNKNOWN_EVENT";
   }

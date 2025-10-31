@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getESPClient, getBridgeState, getCarTrafficState, getBoatTrafficState, getSystemState } from "../lib/api";
+import { getESPClient, getBridgeState, getCarTrafficState, getBoatTrafficState, getSystemState, reconnectWebSocket } from "../lib/api";
 import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, EventMsgT } from "../lib/schema";
 import { IP } from "../types/GenTypes";
 
@@ -31,6 +31,11 @@ interface UseESPWebSocketProps {
   boatTrafficStatus: BoatTrafficStatus | null;
 }
 
+export interface UseESPWebSocketReturn {
+  reconnect: () => void;
+  refreshData: () => void;
+}
+
 export function useESPWebSocket({
   setBridgeStatus,
   setCarTrafficStatus,
@@ -44,9 +49,12 @@ export function useESPWebSocket({
   const lastBridgeStateRef = useRef<string | null>(null);
   const lastLogSeqRef = useRef<number>(-1);
   const legacyLogRef = useRef<Set<string>>(new Set());
+  const clientRef = useRef<ReturnType<typeof getESPClient> | null>(null);
+  const pollFunctionRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const client = getESPClient(IP.AARON_4);
+    clientRef.current = client;
 
     client.onEvent((evt: EventMsgT) => {
       if (evt.type !== "event" || evt.path !== "/system/snapshot") return;
@@ -62,6 +70,8 @@ export function useESPWebSocket({
           lastChangeMs: bridge.lastChangeMs || 0,
           lockEngaged: !!bridge.lockEngaged,
           receivedAt: Date.now(),
+          boatTimerStartMs: bridge.boatTimerStartMs || 0,
+          boatTimerSide: bridge.boatTimerSide || "",
         });
       if (traffic.car) {
         setCarTrafficStatus({
@@ -88,12 +98,14 @@ export function useESPWebSocket({
         });
       }
       if (sys.connection)
-        setSystemStatus({
+        setSystemStatus((prev) => ({
           connection: sys.connection,
           rssi: sys.rssi,
           uptimeMs: sys.uptimeMs,
+          simulation: typeof sys.simulation === "boolean" ? sys.simulation : prev?.simulation,
+          simulationSensors: sys.simulationSensors ?? prev?.simulationSensors,
           receivedAt: Date.now(),
-        });
+        }));
 
       if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
         lastBridgeStateRef.current = bridge.state;
@@ -137,7 +149,12 @@ export function useESPWebSocket({
           getSystemState(),
         ]);
         incrementReceived(4);
-        setBridgeStatus({ ...b, receivedAt: Date.now() });
+        setBridgeStatus({ 
+          ...b, 
+          receivedAt: Date.now(),
+          boatTimerStartMs: b.boatTimerStartMs || 0,
+          boatTimerSide: b.boatTimerSide || "",
+        });
         setCarTrafficStatus({
           left: { ...ct.left, receivedAt: Date.now() },
           right: { ...ct.right, receivedAt: Date.now() },
@@ -152,10 +169,39 @@ export function useESPWebSocket({
       }
     };
 
+    // Store poll function reference so we can call it manually
+    pollFunctionRef.current = poll;
+
     poll();
     const id = setInterval(poll, 5000);
 
+    // Listen to WebSocket status changes
+    client.onStatus((status) => {
+      setSystemStatus((prev) => ({
+        ...prev,
+        connection: status === "Open" ? "Connected" : status === "Connecting" ? "Connecting" : "Disconnected",
+        receivedAt: Date.now(),
+      } as SystemStatus));
+    });
+
     return () => clearInterval(id);
   }, []);
-}
 
+  return {
+    reconnect: () => {
+      // Use the global reconnect function which accesses the same client instance
+      reconnectWebSocket();
+      // Immediately fetch current state - no delay
+      if (pollFunctionRef.current) {
+        console.log("[Reconnect] Immediately fetching current state...");
+        pollFunctionRef.current();
+      }
+    },
+    refreshData: () => {
+      // Allow manual refresh of data
+      if (pollFunctionRef.current) {
+        pollFunctionRef.current();
+      }
+    },
+  };
+}

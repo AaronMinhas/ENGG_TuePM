@@ -4,10 +4,18 @@ import {
   CarTrafficStatus,
   BoatTrafficStatus,
   SystemStatus,
+  SystemState,
   CarTrafficState,
   BoatTrafficState,
 } from "../lib/schema";
-import { getSystemState, setBridgeState, setCarTrafficState, setBoatTrafficState, resetSystem } from "../lib/api";
+import {
+  getSystemState,
+  setBridgeState,
+  setCarTrafficState,
+  setBoatTrafficState,
+  resetSystem,
+  setSimulationSensors,
+} from "../lib/api";
 
 export function useESPStatus(
   incrementSent: () => void,
@@ -100,7 +108,7 @@ export function useESPStatus(
 
       if (data.bridge) {
         setBridgeStatus({
-          state: data.bridge.state ?? bridgeStatus?.state ?? "Closed",
+          state: data.bridge.state ?? bridgeStatus?.state ?? "IDLE",
           lastChangeMs: data.bridge.lastChangeMs ?? bridgeStatus?.lastChangeMs ?? 0,
           lockEngaged: data.bridge.lockEngaged ?? bridgeStatus?.lockEngaged ?? true,
           receivedAt: now,
@@ -141,6 +149,27 @@ export function useESPStatus(
     }
   };
 
+  const handleSimulationSensors = async (updates: {
+    ultrasonicLeft?: boolean;
+    ultrasonicRight?: boolean;
+    beamBreak?: boolean;
+  }) => {
+    incrementSent();
+    logActivity("sent", "Adjust simulation sensors");
+
+    const data = await setSimulationSensors(updates);
+    incrementReceived();
+
+    setSystemStatus((prev) => {
+      const base = prev ?? { connection: "Connected" as SystemState };
+      return {
+        ...base,
+        simulationSensors: data.simulationSensors,
+        receivedAt: Date.now(),
+      };
+    });
+  };
+
   return {
     bridgeStatus,
     setBridgeStatus,
@@ -156,5 +185,6 @@ export function useESPStatus(
     handleCarTraffic,
     handleBoatTraffic,
     handleResetSystem,
+    handleSimulationSensors,
   };
 }

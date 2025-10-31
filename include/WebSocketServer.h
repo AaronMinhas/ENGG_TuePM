@@ -6,12 +6,13 @@
 #include "StateWriter.h"
 #include "CommandBus.h"
 #include "EventBus.h"
+#include "DetectionSystem.h"
 
 class ConsoleCommands;
 
 class WebSocketServer {
 public:
-    WebSocketServer(uint16_t port, StateWriter& StateWriter, CommandBus& commandBus, EventBus& eventBus);
+    WebSocketServer(uint16_t port, StateWriter& StateWriter, CommandBus& commandBus, EventBus& eventBus, DetectionSystem& detectionSystem);
 
     void configureWiFi(const char* ssid, const char* password);
     void networkLoop();
@@ -21,6 +22,7 @@ private:
     StateWriter& state_;
     CommandBus& commandBus_;
     EventBus& eventBus_;
+    DetectionSystem& detectionSystem_;
     ConsoleCommands* console_ = nullptr;
 
     AsyncWebServer server;

@@ -7,8 +7,8 @@ namespace {
   constexpr unsigned long RETRY_DELAY_MS = 10000;
 }
 
-WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter, CommandBus& commandBus, EventBus& eventBus) 
-    : server(port), ws("/ws"), port(port), state_(stateWriter), commandBus_(commandBus), eventBus_(eventBus) {}
+WebSocketServer::WebSocketServer(uint16_t port, StateWriter& stateWriter, CommandBus& commandBus, EventBus& eventBus, DetectionSystem& detectionSystem) 
+    : server(port), ws("/ws"), port(port), state_(stateWriter), commandBus_(commandBus), eventBus_(eventBus), detectionSystem_(detectionSystem) {}
 
 void WebSocketServer::attachConsole(ConsoleCommands* console) {
     console_ = console;
@@ -128,7 +128,7 @@ void WebSocketServer::fillSystemStatus(JsonObject obj) {
 }
 
 void WebSocketServer::broadcastSnapshot() {
-    StaticJsonDocument<1024> doc;
+    DynamicJsonDocument doc(1024);
     state_.buildSnapshot(doc);
     String out; serializeJson(doc, out);
     ws.textAll(out);
@@ -169,6 +169,11 @@ void WebSocketServer::setupBroadcastSubscriptions() {
     
     // Subscribe to state changes for immediate updates
     eventBus_.subscribe(E::STATE_CHANGED, sub);
+    
+    // Simulation mode changes
+    eventBus_.subscribe(E::SIMULATION_ENABLED, sub);
+    eventBus_.subscribe(E::SIMULATION_DISABLED, sub);
+    eventBus_.subscribe(E::SIMULATION_SENSOR_CONFIG_CHANGED, sub);
 }
 
 /**
@@ -178,14 +183,14 @@ void WebSocketServer::setupBroadcastSubscriptions() {
  */
 void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, const String& path,
                              std::function<void(JsonObject)> fillPayload) {
-    StaticJsonDocument<512> doc;
+    DynamicJsonDocument doc(512);
     doc["v"] = 1;
     doc["id"] = id;
     doc["type"] = "response";
     doc["ok"] = true;
     doc["path"] = path;
     if (fillPayload) {
-        JsonObject payload = doc.createNestedObject("payload");
+        JsonObject payload = doc["payload"].to<JsonObject>();
         fillPayload(payload);
     }
     String out; serializeJson(doc, out);
@@ -198,7 +203,7 @@ void WebSocketServer::sendOk(AsyncWebSocketClient* client, const String& id, con
 }
 
 void WebSocketServer::sendError(AsyncWebSocketClient* client, const String& id, const String& path, const String& msg) {
-    StaticJsonDocument<384> doc;
+    DynamicJsonDocument doc(384);
     doc["v"] = 1;
     doc["id"] = id;
     doc["type"] = "response";
@@ -276,7 +281,7 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         // Acknowledge request and provide current vs requested state distinctly
         sendOk(client, id, path, [this, s](JsonObject p){
             p["requestedState"] = s;
-            JsonObject current = p.createNestedObject("current");
+            JsonObject current = p["current"].to<JsonObject>();
             fillBridgeStatus(current);
         });
 
@@ -301,7 +306,7 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         // Acknowledge request and include current snapshot
         sendOk(client, id, path, [this, v](JsonObject p){
             p["requestedValue"] = v;
-            JsonObject current = p.createNestedObject("current");
+            JsonObject current = p["current"].to<JsonObject>();
             fillCarTrafficStatus(current);
         });
 
@@ -337,8 +342,64 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         sendOk(client, id, path, [this, sd, v](JsonObject p){
             p["requestedSide"] = sd;
             p["requestedValue"] = v;
-            JsonObject current = p.createNestedObject("current");
+            JsonObject current = p["current"].to<JsonObject>();
             fillBoatTrafficStatus(current);
+        });
+    } else if (path == "/simulation/sensors") {
+        if (!detectionSystem_.isSimulationMode()) {
+            sendError(client, id, path, "Enable simulation mode before editing sensors");
+            return;
+        }
+
+        auto payloadObj = payload.as<JsonObject>();
+        JsonVariant leftVar = payloadObj["ultrasonicLeft"];
+        JsonVariant rightVar = payloadObj["ultrasonicRight"];
+        JsonVariant beamVar = payloadObj["beamBreak"];
+        bool hasLeft = !leftVar.isNull();
+        bool hasRight = !rightVar.isNull();
+        bool hasBeam = !beamVar.isNull();
+
+        if (!hasLeft && !hasRight && !hasBeam) {
+            sendError(client, id, path, "Provide at least one sensor field to update");
+            return;
+        }
+
+        auto currentConfig = detectionSystem_.getSimulationSensorConfig();
+
+        if (hasLeft || hasRight) {
+            if (hasLeft && !leftVar.is<bool>()) {
+                sendError(client, id, path, "'ultrasonicLeft' must be boolean");
+                return;
+            }
+            if (hasRight && !rightVar.is<bool>()) {
+                sendError(client, id, path, "'ultrasonicRight' must be boolean");
+                return;
+            }
+
+            bool leftEnabled = hasLeft ? leftVar.as<bool>() : currentConfig.ultrasonicLeftEnabled;
+            bool rightEnabled = hasRight ? rightVar.as<bool>() : currentConfig.ultrasonicRightEnabled;
+            detectionSystem_.setSimulationUltrasonicEnabled(leftEnabled, rightEnabled);
+            LOG_INFO(Logger::TAG_DS, "SIM SENSOR: ultrasonicLeft=%s ultrasonicRight=%s",
+                     leftEnabled ? "ENABLED" : "DISABLED",
+                     rightEnabled ? "ENABLED" : "DISABLED");
+        }
+
+        if (hasBeam) {
+            if (!beamVar.is<bool>()) {
+                sendError(client, id, path, "'beamBreak' must be boolean");
+                return;
+            }
+            bool beamEnabled = beamVar.as<bool>();
+            detectionSystem_.setSimulationBeamBreakEnabled(beamEnabled);
+            LOG_INFO(Logger::TAG_DS, "SIM SENSOR: beamBreak=%s", beamEnabled ? "ENABLED" : "DISABLED");
+        }
+
+        sendOk(client, id, path, [this](JsonObject p){
+            JsonObject sensors = p["simulationSensors"].to<JsonObject>();
+            auto cfg = detectionSystem_.getSimulationSensorConfig();
+            sensors["ultrasonicLeft"] = cfg.ultrasonicLeftEnabled;
+            sensors["ultrasonicRight"] = cfg.ultrasonicRightEnabled;
+            sensors["beamBreak"] = cfg.beamBreakEnabled;
         });
     } else if (path == "/system/reset") {
         LOG_WARN(Logger::TAG_WS, "System reset requested via WebSocket client %u", client ? client->id() : 0);
@@ -347,11 +408,11 @@ void WebSocketServer::handleSet(AsyncWebSocketClient* client, const String& id, 
         eventBus_.publish(BridgeEvent::SYSTEM_RESET_REQUESTED, resetData, EventPriority::EMERGENCY);
 
         sendOk(client, id, path, [this](JsonObject p){
-            JsonObject bridge = p.createNestedObject("bridge");
+            JsonObject bridge = p["bridge"].to<JsonObject>();
             fillBridgeStatus(bridge);
-            JsonObject car = p.createNestedObject("carTraffic");
+            JsonObject car = p["carTraffic"].to<JsonObject>();
             fillCarTrafficStatus(car);
-            JsonObject boat = p.createNestedObject("boatTraffic");
+            JsonObject boat = p["boatTraffic"].to<JsonObject>();
             fillBoatTrafficStatus(boat);
         });
     } else if (path == "/console/command") {
@@ -397,7 +458,7 @@ void WebSocketServer::handleWsEvent(AsyncWebSocket* server, AsyncWebSocketClient
         return;
     }
 
-    StaticJsonDocument<768> doc;
+    DynamicJsonDocument doc(768);
     DeserializationError err = deserializeJson(doc, data, len);
     if (err) {
         LOG_WARN(Logger::TAG_WS, "JSON parse error: %s", err.c_str());
