@@ -53,6 +53,8 @@ export interface BridgeStatus {
   receivedAt?: number;
   boatTimerStartMs?: number;  // ESP32 millis when boat green period started (0 = inactive)
   boatTimerSide?: string;      // Which side has green ("left" or "right", empty if inactive)
+  pedestrianTimerStartMs?: number;  // ESP32 millis when pedestrian crossing started (0 = inactive)
+  pedestrianTimerRemainingMs?: number; // Remaining time (ms) in pedestrian crossing window
 }
 
 export interface TrafficLightStatus<TLight> {

@@ -40,8 +40,8 @@ void MotorControl::raiseBridge() {
     LOG_INFO(Logger::TAG_MC, "Command received -> raiseBridge()");
     
     if (m_motorRunning) {
-        LOG_WARN(Logger::TAG_MC, "Motor already running, ignoring command");
-        return;
+        LOG_WARN(Logger::TAG_MC, "Motor already running - interrupting current operation to raise bridge");
+        stopMotor();  // Force stop current operation
     }
     
     m_raisingBridge = true;
@@ -64,8 +64,8 @@ void MotorControl::lowerBridge() {
     LOG_INFO(Logger::TAG_MC, "Command received -> lowerBridge()");
     
     if (m_motorRunning) {
-        LOG_WARN(Logger::TAG_MC, "Motor already running, ignoring command");
-        return;
+        LOG_WARN(Logger::TAG_MC, "Motor already running - interrupting current operation to lower bridge");
+        stopMotor();  // Force stop current operation
     }
     
     m_raisingBridge = false;

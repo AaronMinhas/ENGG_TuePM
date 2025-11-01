@@ -1,11 +1,16 @@
 #include "StateWriter.h"
 #include "Logger.h"
 #include "ConsoleCommands.h"
+#include "SignalControl.h"
 
 StateWriter::StateWriter(EventBus& bus) : bus_(bus) {}
 
 void StateWriter::attachConsole(ConsoleCommands* console) {
     console_ = console;
+}
+
+void StateWriter::attachSignalControl(SignalControl* signalControl) {
+    signalControl_ = signalControl;
 }
 
 // Below subscribes all events that the FSM / subsystems publish.
@@ -56,6 +61,15 @@ void StateWriter::fillBridgeStatus(JsonObject obj) const {
     } else {
         obj["boatTimerStartMs"] = 0;
         obj["boatTimerSide"] = "";
+    }
+    
+    // Include pedestrian timer info if active - read directly from SignalControl
+    if (signalControl_ != nullptr) {
+        obj["pedestrianTimerStartMs"] = signalControl_->getPedestrianTimerStartMs();
+        obj["pedestrianTimerRemainingMs"] = signalControl_->getPedestrianTimerRemainingMs();
+    } else {
+        obj["pedestrianTimerStartMs"] = 0;
+        obj["pedestrianTimerRemainingMs"] = 0;
     }
 }
 
@@ -142,6 +156,10 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
                 const BridgeState newState = stateData->getNewState();
                 bridgeState_ = stateToString(newState);
                 bridgeLastChangeMs_ = now;
+                
+                // Pedestrian timer is now read directly from SignalControl in fillBridgeStatus()
+                // No need to track it here
+                
                 if (newState != previousState) {
                     pushLog(String("Bridge state changed: ") + stateToString(previousState) +
                             " -> " + stateToString(newState));
@@ -195,6 +213,7 @@ void StateWriter::applyEvent(BridgeEvent ev, EventData* data) {
             break;
         case BridgeEvent::TRAFFIC_STOPPED_SUCCESS:
             carLeft_ = carRight_ = "Red";
+            // Don't reset pedestrian timer here - let STATE_CHANGED handle it
             pushLog(String("Traffic stopped; car lights now ") + carLeft_ + "/" + carRight_);
             break;
         case BridgeEvent::BRIDGE_OPENED_SUCCESS:

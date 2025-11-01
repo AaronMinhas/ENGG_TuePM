@@ -72,6 +72,8 @@ export function useESPWebSocket({
           receivedAt: Date.now(),
           boatTimerStartMs: bridge.boatTimerStartMs || 0,
           boatTimerSide: bridge.boatTimerSide || "",
+          pedestrianTimerStartMs: bridge.pedestrianTimerStartMs || 0,
+          pedestrianTimerRemainingMs: bridge.pedestrianTimerRemainingMs || 0,
         });
       if (traffic.car) {
         setCarTrafficStatus({
@@ -154,6 +156,8 @@ export function useESPWebSocket({
           receivedAt: Date.now(),
           boatTimerStartMs: b.boatTimerStartMs || 0,
           boatTimerSide: b.boatTimerSide || "",
+          pedestrianTimerStartMs: b.pedestrianTimerStartMs || 0,
+          pedestrianTimerRemainingMs: b.pedestrianTimerRemainingMs || 0,
         });
         setCarTrafficStatus({
           left: { ...ct.left, receivedAt: Date.now() },

@@ -76,8 +76,65 @@ function BoatTimerDisplay({ timerStartMs, side }: { timerStartMs: number; side: 
   if (remainingSeconds <= 0 || !timerStartMs || timerStartMs === 0) return null;
   
   return (
-    <div className="text-xs text-blue-600 mt-1 font-mono font-semibold">
+    <div className="text-xs text-blue-600 mt-0.5 font-mono font-semibold">
       Boat window: {remainingSeconds}s ({side})
+    </div>
+  );
+}
+
+// Pedestrian timer countdown component
+function PedestrianTimerDisplay({
+  active,
+  remainingMs,
+}: {
+  active: boolean;
+  remainingMs: number;
+}) {
+  const [displayMs, setDisplayMs] = useState<number>(remainingMs);
+  const [hasReceivedData, setHasReceivedData] = useState<boolean>(false);
+  const originMsRef = useRef<number>(remainingMs);
+  const originTimeRef = useRef<number>(performance.now());
+
+  useEffect(() => {
+    if (!active) {
+      originMsRef.current = 0;
+      setDisplayMs(0);
+      setHasReceivedData(false);
+      return;
+    }
+
+    if (remainingMs > 0) {
+      originMsRef.current = remainingMs;
+      originTimeRef.current = performance.now();
+      setDisplayMs(remainingMs);
+      setHasReceivedData(true); // Mark that we've received valid data
+    }
+  }, [active, remainingMs]);
+
+  useEffect(() => {
+    const tick = () => {
+      if (!active || originMsRef.current <= 0) {
+        setDisplayMs(0);
+        return;
+      }
+
+      const elapsed = performance.now() - originTimeRef.current;
+      const updated = Math.max(0, originMsRef.current - elapsed);
+      setDisplayMs(updated);
+    };
+
+    const interval = setInterval(tick, 100);
+    return () => clearInterval(interval);
+  }, [active]);
+
+  const remainingSeconds = Math.max(0, Math.ceil(displayMs / 1000));
+
+  // Don't show until we've received valid timer data from backend
+  if (!hasReceivedData || (!active && remainingSeconds <= 0)) return null;
+
+  return (
+    <div className="text-xs text-amber-600 mt-1 font-mono font-semibold">
+      Pedestrians crossing: {remainingSeconds}s remaining
     </div>
   );
 }
@@ -208,6 +265,14 @@ export default function BridgeCard({ bridgeStatus, carTrafficStatus, boatTraffic
     }
   };
 
+  const pedestrianTimerStartMs = bridgeStatus?.pedestrianTimerStartMs ?? 0;
+  const pedestrianTimerRemainingMs = bridgeStatus?.pedestrianTimerRemainingMs ?? 0;
+  const pedestrianTimerActive =
+    bridgeState === "STOPPING_TRAFFIC" ||
+    (pedestrianTimerStartMs > 0 && pedestrianTimerRemainingMs > 0);
+  const boatTimerStartMs = bridgeStatus?.boatTimerStartMs ?? 0;
+  const boatTimerSide = bridgeStatus?.boatTimerSide || "";
+
   return (
     <div className="bg-white rounded-md p-4 h-full flex flex-col border-base-400 shadow-[0_0_2px_rgba(0,0,0,0.25)] border relative overflow-hidden">
       {/* Bridge Visual */}
@@ -291,9 +356,15 @@ export default function BridgeCard({ bridgeStatus, carTrafficStatus, boatTraffic
           {getStatusText()}
         </div>
         {lastStateChangeTime && (
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-gray-500 mt-0.5">
             Last changed: {new Date(lastStateChangeTime).toLocaleTimeString()}
           </div>
+        )}
+        {pedestrianTimerActive && (
+          <PedestrianTimerDisplay 
+            active={bridgeState === "STOPPING_TRAFFIC"}
+            remainingMs={pedestrianTimerRemainingMs}
+          />
         )}
         {bridgeStatus?.boatTimerStartMs && bridgeStatus.boatTimerStartMs > 0 && (
           <BoatTimerDisplay 

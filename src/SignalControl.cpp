@@ -96,7 +96,8 @@ SignalControl::SignalControl(EventBus& eventBus)
       m_operationStartTime(0),
       m_boatQueueActive(false),
       m_boatQueueStartTime(0),
-      m_boatQueueSide("") {
+      m_boatQueueSide(""),
+      m_pedestrianTimerStartTime(0) {
     LOG_INFO(Logger::TAG_SC, "Initialised");
 }
 
@@ -117,8 +118,11 @@ void SignalControl::stopTraffic() {
     m_stopPhase = StopPhase::YELLOW_WARNING;
     m_operationStartTime = millis();
     
+    // Start pedestrian crossing timer for frontend countdown
+    m_pedestrianTimerStartTime = millis();
+    
     // Green→Yellow (warning begins)
-    LOG_INFO(Logger::TAG_SC, "Stopping traffic - Phase 1: car=YELLOW (warning)");
+    LOG_INFO(Logger::TAG_SC, "Stopping traffic - Phase 1: car=YELLOW (warning) - pedestrian crossing timer started");
     driveCar(CAR, "Yellow");
     driveBoat(BOAT_LEFT, "Red");
     driveBoat(BOAT_RIGHT, "Red");
@@ -127,7 +131,7 @@ void SignalControl::stopTraffic() {
     auto* yellowData = new LightChangeData("both", "Yellow", true);
     m_eventBus.publish(BridgeEvent::CAR_LIGHT_CHANGED_SUCCESS, yellowData);
     
-    // SUCCESS event will be published by update() after 6 seconds
+    // SUCCESS event will be published by update() after 12 seconds
 }
 
 void SignalControl::resumeTraffic() {
@@ -168,6 +172,8 @@ void SignalControl::resetToIdleState() {
     m_boatQueueActive = false;
     m_boatQueueStartTime = 0;
     m_boatQueueSide = "";
+    
+    m_pedestrianTimerStartTime = 0;
 
     driveBoat(BOAT_LEFT, "Red");
     driveBoat(BOAT_RIGHT, "Red");
@@ -199,7 +205,7 @@ void SignalControl::update() {
     if (m_currentOperation == Operation::STOPPING_TRAFFIC) {
         switch (m_stopPhase) {
             case StopPhase::YELLOW_WARNING:
-                if (elapsed >= 4000) {  
+                if (elapsed >= 6000) {  // 6 seconds yellow warning
                     LOG_INFO(Logger::TAG_SC, "Stopping traffic - Phase 2: car=RED (clearance)");
                     driveCar(CAR, "Red");
                     // Publish car light change event for frontend updates
@@ -210,8 +216,12 @@ void SignalControl::update() {
                 break;
                 
             case StopPhase::RED_CLEARANCE:
-                if (elapsed >= 6000) {  
-                    LOG_INFO(Logger::TAG_SC, "Traffic stopped successfully");
+                if (elapsed >= 12000) {  // 12 seconds total (6s yellow + 6s red)
+                    LOG_INFO(Logger::TAG_SC, "Traffic stopped successfully (12s pedestrian crossing time)");
+                    
+                    // Reset pedestrian timer (crossing period complete)
+                    m_pedestrianTimerStartTime = 0;
+                    
                     auto* stoppedData = new SimpleEventData(BridgeEvent::TRAFFIC_STOPPED_SUCCESS);
                     m_eventBus.publish(BridgeEvent::TRAFFIC_STOPPED_SUCCESS, stoppedData);
                     m_stopPhase = StopPhase::COMPLETE;
@@ -350,4 +360,23 @@ void SignalControl::endBoatGreenPeriod() {
 
 bool SignalControl::isBoatGreenPeriodActive() const {
     return m_boatQueueActive;
+}
+
+unsigned long SignalControl::getPedestrianTimerStartMs() const {
+    return m_pedestrianTimerStartTime;
+}
+
+unsigned long SignalControl::getPedestrianTimerRemainingMs() const {
+    if (m_pedestrianTimerStartTime == 0) {
+        return 0;
+    }
+    unsigned long elapsed = millis() - m_pedestrianTimerStartTime;
+    if (elapsed >= PEDESTRIAN_CROSSING_TIME_MS) {
+        return 0;
+    }
+    return PEDESTRIAN_CROSSING_TIME_MS - elapsed;
+}
+
+bool SignalControl::isPedestrianTimerActive() const {
+    return m_pedestrianTimerStartTime > 0;
 }

@@ -5,8 +5,10 @@
 #include <vector>
 #include "EventBus.h"
 #include "BridgeSystemDefs.h"
+#include "SignalControl.h"
 
 class ConsoleCommands;
+class SignalControl;
 
 class StateWriter {
 public:
@@ -14,6 +16,7 @@ public:
 
   void beginSubscriptions();
   void attachConsole(ConsoleCommands* console);
+  void attachSignalControl(SignalControl* signalControl);
 
   void fillBridgeStatus(JsonObject obj) const;
   void fillCarTrafficStatus(JsonObject obj) const;
@@ -27,6 +30,7 @@ public:
 private:
   EventBus& bus_;
   ConsoleCommands* console_ = nullptr;
+  SignalControl* signalControl_ = nullptr;
   mutable std::mutex mu_;
 
   String bridgeState_ = "IDLE";

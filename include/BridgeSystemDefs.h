@@ -6,6 +6,9 @@
 #define BOAT_PASSAGE_TIMEOUT_MS 120000  // 2 minutes - emergency timeout if no boat passes
 #define BOAT_CYCLE_COOLDOWN_MS 45000    // 45 seconds - buffer before starting a new bridge cycle
 
+// Pedestrian Crossing Timing Constants
+#define PEDESTRIAN_CROSSING_TIME_MS 12000  // 12 seconds - time for pedestrians to finish crossing before bridge opens
+
 // System States
 enum class BridgeState {
     IDLE,

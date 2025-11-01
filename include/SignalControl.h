@@ -23,6 +23,11 @@ public:
     void endBoatGreenPeriod();                      // End green period, turn lights red
     bool isBoatGreenPeriodActive() const;           // Check if queue timer is active
     
+    // Pedestrian timer methods
+    unsigned long getPedestrianTimerStartMs() const;  // Get pedestrian crossing timer start (0 if inactive)
+    unsigned long getPedestrianTimerRemainingMs() const; // Get remaining time (ms) for pedestrian crossing window
+    bool isPedestrianTimerActive() const;             // Check if pedestrian timer is active
+    
 private:
     EventBus& m_eventBus;
     
@@ -54,4 +59,7 @@ private:
     bool m_boatQueueActive;
     unsigned long m_boatQueueStartTime;
     String m_boatQueueSide;  // Which side's light is green ("left" or "right")
+    
+    // Pedestrian crossing timer state
+    unsigned long m_pedestrianTimerStartTime;  // When pedestrian crossing period started (0 if inactive)
 };
