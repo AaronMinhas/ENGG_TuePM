@@ -16,7 +16,7 @@
         * Cyan   = Bridge motion (opening/closing) - blinking  
         * Blue   = Bridge open (waiting for boat) - solid
         * Purple = Manual mode - solid/blinking
-        * Red    = Fault/Error - solid
+        * Red    = Fault/Error - blinking
     - Publish INDICATOR_UPDATE_SUCCESS after each refresh so StateWriter/UI can log and sync.
 */
 
@@ -193,6 +193,7 @@ bool LocalStateIndicator::shouldBlink(BridgeState state) {
         case BridgeState::RESUMING_TRAFFIC:
         case BridgeState::OPENING:
         case BridgeState::CLOSING:
+        case BridgeState::FAULT:
         case BridgeState::MANUAL_OPENING:
         case BridgeState::MANUAL_CLOSING:
             return true;
