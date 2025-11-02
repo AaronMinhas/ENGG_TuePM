@@ -1,16 +1,18 @@
 import React from "react";
-import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, CarTrafficState, BoatTrafficState } from "../lib/schema";
+import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, SensorStatus, CarTrafficState, BoatTrafficState } from "../lib/schema";
 import { Icon, ActivityEntry } from "../types/GenTypes";
 import { timeAgo } from "../utils/timeAgo";
 import DashCard from "./DashCard";
 import BridgeCard from "./BridgeCard";
 import ActivitySec from "./ActivitySec";
+import SensorsCard from "./SensorsCard";
 
 interface DesktopDashboardProps {
   readonly bridgeStatus: BridgeStatus | null;
   readonly carTrafficStatus: CarTrafficStatus | null;
   readonly boatTrafficStatus: BoatTrafficStatus | null;
   readonly systemStatus: SystemStatus | null;
+  readonly sensorStatus: SensorStatus | null;
   readonly packetsSent: number;
   readonly packetsReceived: number;
   readonly lastSentAt: number | null;
@@ -29,6 +31,7 @@ export default function DesktopDashboard({
   carTrafficStatus,
   boatTrafficStatus,
   systemStatus,
+  sensorStatus,
   packetsSent,
   packetsReceived,
   lastSentAt,
@@ -42,7 +45,7 @@ export default function DesktopDashboard({
   controlsDisabled = false,
 }: DesktopDashboardProps) {
   return (
-    <div className="hidden lg:grid grid-cols-4 grid-rows-4 gap-4 lg:h-[calc(100vh-300px)] max-w-[1700px] w-full mx-4">
+    <div className="hidden lg:grid grid-cols-4 grid-rows-5 gap-4 lg:h-[calc(100vh-300px)] max-w-[1700px] w-full mx-4">
       <DashCard
         title="Bridge State"
         variant="STATE"
@@ -52,7 +55,6 @@ export default function DesktopDashboard({
           { id: "d-b-c", label: "Close", action: handleCloseBridge },
         ]}
         description={bridgeStatus?.state || ""}
-        updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
         status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
         disabled={controlsDisabled}
       />
@@ -66,7 +68,6 @@ export default function DesktopDashboard({
           { id: "d-c-g", label: "Green", action: () => handleCarTraffic("Green") },
         ]}
         description={carTrafficStatus?.left.value || carTrafficStatus?.right.value || ""}
-        updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
         status={
           carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
         }
@@ -96,22 +97,16 @@ export default function DesktopDashboard({
             ? { kind: "boat", value: boatTrafficStatus.right.value }
             : undefined
         }
-        updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
         disabled={controlsDisabled}
       />
-      <div className="row-span-4">
+      <div className="row-span-5">
         <ActivitySec log={activityLog} bridgeState={bridgeStatus?.state} />
       </div>
 
-      <DashCard
-        title="System State"
-        variant="STATE"
-        iconT={Icon.SYSTEM}
-        options={[{ id: "d-s", label: "Update Status", action: handleFetchSystem }]}
-        description={systemStatus?.connection || ""}
-        updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
-        status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
-      />
+      <div className="row-span-3">
+        <SensorsCard sensorStatus={sensorStatus} />
+      </div>
+
       <div className="col-span-2 row-span-3">
         <BridgeCard 
           bridgeStatus={bridgeStatus} 
@@ -132,6 +127,15 @@ export default function DesktopDashboard({
         iconT={Icon.PACKETS_REC}
         description={packetsReceived.toString()}
         updatedAt={lastReceivedAt ? timeAgo(lastReceivedAt) : ""}
+      />
+
+      <DashCard
+        title="System State"
+        variant="STATE"
+        iconT={Icon.SYSTEM}
+        options={[{ id: "d-s", label: "Update Status", action: handleFetchSystem }]}
+        description={systemStatus?.connection || ""}
+        status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
       />
     </div>
   );

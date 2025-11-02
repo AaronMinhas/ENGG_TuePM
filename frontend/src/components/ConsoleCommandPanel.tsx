@@ -51,17 +51,6 @@ interface FeedbackState {
   text: string;
 }
 
-interface CommandEntry {
-  label: string;
-  command: string;
-}
-
-interface CommandSection {
-  title: string;
-  description?: string;
-  commands: CommandEntry[];
-}
-
 export default function ConsoleCommandPanel({
   onSend,
   sending,
@@ -79,79 +68,127 @@ export default function ConsoleCommandPanel({
   const [trafficPending, setTrafficPending] = useState(false);
   const [sensorsPending, setSensorsPending] = useState(false);
 
-  const boatEventSection: CommandSection = {
-    title: "Boat Event Simulation",
-    description: "Trigger synthetic boat events for testing.",
-    commands: [
-      { label: "Boat Detected Left", command: "test boat left" },
-      { label: "Boat Detected Right", command: "test boat right" },
-      { label: "Boat Passed", command: "test boat pass" },
-    ],
-  };
-
-  const motorSection: CommandSection = {
-    title: "Motor Control",
-    description: "Manually move the bridge motor while in simulation.",
-    commands: [
-      { label: "Raise Bridge", command: "raise" },
-      { label: "Lower Bridge", command: "lower" },
-      { label: "Halt Motor", command: "halt" },
-      { label: "Test Limit Switch", command: "test limit" },
-    ],
-  };
-
-  const safetyTestSection: CommandSection = {
-    title: "Safety Test Fault",
-    description: "Manually trigger or clear the safety test fault state.",
-    commands: [
-      { label: "Trigger Test Fault", command: "test fault" },
-      { label: "Clear Test Fault", command: "test clear" },
-      { label: "Test Fault Status", command: "test status" },
-    ],
-  };
-
-  const getSectionIcon = (title: string) => {
-    switch (title) {
-      case "Boat Event Simulation":
-        return <Sailboat size={14} className="text-blue-600" />;
-      case "Motor Control":
-        return <Settings size={14} className="text-purple-600" />;
-      case "Safety Test Fault":
-        return <AlertTriangle size={14} className="text-orange-600" />;
-      default:
-        return null;
-    }
-  };
-
-  const getButtonIcon = (label: string) => {
-    if (label.includes("Raise")) return <ArrowUp size={12} className="text-gray-700" />;
-    if (label.includes("Lower")) return <ArrowDown size={12} className="text-gray-700" />;
-    if (label.includes("Halt")) return <Square size={12} className="text-gray-700" />;
-    if (label.includes("Test Limit")) return <Target size={12} className="text-gray-700" />;
-    return null;
-  };
-
-  const renderCommandSection = (section: CommandSection) => (
-    <div key={section.title} className="rounded-md border border-base-300 p-3 space-y-2 bg-gray-50">
+  const renderBoatEventSection = () => (
+    <div className="rounded-md border border-base-300 p-3 space-y-2 bg-gray-50">
       <div className="flex items-center gap-2">
-        {getSectionIcon(section.title)}
-        <p className="text-sm font-semibold text-gray-900">{section.title}</p>
+        <Sailboat size={14} className="text-blue-600" />
+        <p className="text-sm font-semibold text-gray-900">Boat Event Simulation</p>
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {section.commands.map((entry) => (
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-2 gap-1.5">
           <button
-            key={entry.command}
             type="button"
             disabled={sending}
-            onClick={() => {
-              void handleClick(entry.command);
-            }}
-            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-500 hover:bg-brand-50 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 transition-all flex items-center gap-1"
+            onClick={() => void handleClick("test boat left")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
           >
-            {getButtonIcon(entry.label)}
-            {entry.label}
+            Boat Detected Left
           </button>
-        ))}
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("test boat right")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+          >
+            Boat Detected Right
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={sending}
+          onClick={() => void handleClick("test boat pass")}
+          className="w-full rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+        >
+          Boat Passed
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderMotorSection = () => (
+    <div className="rounded-md border border-base-300 p-3 space-y-2 bg-gray-50">
+      <div className="flex items-center gap-2">
+        <Settings size={14} className="text-purple-600" />
+        <p className="text-sm font-semibold text-gray-900">Motor Control</p>
+      </div>
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("raise")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all flex items-center justify-center gap-1"
+          >
+            <ArrowUp size={12} />
+            Raise Bridge
+          </button>
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("lower")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all flex items-center justify-center gap-1"
+          >
+            <ArrowDown size={12} />
+            Lower Bridge
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("halt")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all flex items-center justify-center gap-1"
+          >
+            <Square size={12} />
+            Halt Motor
+          </button>
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("test limit")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all flex items-center justify-center gap-1"
+          >
+            <Target size={12} />
+            Test Limit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderSafetySection = () => (
+    <div className="rounded-md border border-base-300 p-3 space-y-2 bg-gray-50">
+      <div className="flex items-center gap-2">
+        <AlertTriangle size={14} className="text-orange-600" />
+        <p className="text-sm font-semibold text-gray-900">Safety Test Fault</p>
+      </div>
+      <div className="space-y-1.5">
+        <button
+          type="button"
+          disabled={sending}
+          onClick={() => void handleClick("test status")}
+          className="w-full rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-orange-500 hover:bg-orange-50 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+        >
+          Test Fault Status
+        </button>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("test fault")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-orange-500 hover:bg-orange-50 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+          >
+            Trigger Test Fault
+          </button>
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => void handleClick("test clear")}
+            className="rounded border border-base-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-orange-500 hover:bg-orange-50 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+          >
+            Clear Test Fault
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -217,16 +254,16 @@ export default function ConsoleCommandPanel({
   return (
     <div className="flex w-full justify-center px-4 pb-6 mt-4">
       <div className="w-full max-w-[1700px] rounded-lg border border-base-300 bg-white p-4 shadow-sm space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-1">
           <Terminal size={16} className="text-gray-700" />
           <span className="font-semibold text-gray-900">Console Commands</span>
         </div>
         
-        {/* Top Row: Simulation Mode + Sensor Sources + Log Level */}
-        <div className="flex flex-wrap gap-3">
+        {/* Top Controls Grid */}
+        <div className="grid gap-3 lg:grid-cols-3">
           {/* Simulation Mode Section */}
-          <div className="rounded-md border border-base-300 bg-gray-50 p-3 inline-flex items-center gap-3">
-            <div className="flex items-center gap-2">
+          <div className="rounded-md border border-base-300 bg-gray-50 p-3">
+            <div className="flex items-center gap-2 mb-2">
               <Power size={14} className="text-green-600" />
               <p className="text-sm font-semibold text-gray-900">Simulation Mode</p>
             </div>
@@ -237,7 +274,7 @@ export default function ConsoleCommandPanel({
                 onClick={() => {
                   void handleClick("sim on");
                 }}
-                className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 flex-1 justify-center ${
                   simulationActive
                     ? "bg-green-600 border-green-600 text-white"
                     : "border-base-300 text-gray-700 hover:border-green-500 hover:bg-green-50 disabled:opacity-60"
@@ -252,7 +289,7 @@ export default function ConsoleCommandPanel({
                 onClick={() => {
                   void handleClick("sim off");
                 }}
-                className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 flex-1 justify-center ${
                   simulationActive
                     ? "border-base-300 text-gray-700 hover:border-red-500 hover:bg-red-50"
                     : "border-base-200 text-gray-400 bg-gray-100"
@@ -284,7 +321,7 @@ export default function ConsoleCommandPanel({
                       `Left ultrasonic ${simulationSensors.ultrasonicLeft ? "disabled" : "enabled"}.`
                     )
                   }
-                  className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                  className={`rounded px-2 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
                     simulationSensors.ultrasonicLeft
                       ? "bg-green-600 border-green-600 text-white"
                       : "border-base-300 text-gray-700 hover:border-green-500 hover:bg-green-50"
@@ -302,7 +339,7 @@ export default function ConsoleCommandPanel({
                       `Right ultrasonic ${simulationSensors.ultrasonicRight ? "disabled" : "enabled"}.`
                     )
                   }
-                  className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                  className={`rounded px-2 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
                     simulationSensors.ultrasonicRight
                       ? "bg-green-600 border-green-600 text-white"
                       : "border-base-300 text-gray-700 hover:border-green-500 hover:bg-green-50"
@@ -320,7 +357,7 @@ export default function ConsoleCommandPanel({
                       `Beam break ${simulationSensors.beamBreak ? "disabled" : "enabled"}.`
                     )
                   }
-                  className={`rounded px-3 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
+                  className={`rounded px-2 py-1.5 text-xs font-medium border transition-all flex items-center gap-1.5 ${
                     simulationSensors.beamBreak
                       ? "bg-green-600 border-green-600 text-white"
                       : "border-base-300 text-gray-700 hover:border-green-500 hover:bg-green-50"
@@ -334,12 +371,12 @@ export default function ConsoleCommandPanel({
           )}
           
           {/* Log Level Control */}
-          <div className="rounded-md border border-base-300 bg-gray-50 p-3 inline-flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
+          <div className={`rounded-md border border-base-300 bg-gray-50 p-3 ${!simulationActive ? "lg:col-span-2" : ""}`}>
+            <div className="flex items-center gap-2 mb-2">
               <FileText size={14} className="text-indigo-600" />
               <p className="text-sm font-semibold text-gray-900">Log Level</p>
             </div>
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 disabled={sending}
@@ -415,7 +452,8 @@ export default function ConsoleCommandPanel({
         </div>
         
         {simulationActive ? (
-          <div className="space-y-3">
+          <>
+            {/* Main Control Cards Grid */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <TrafficLightsCard
                 carTrafficStatus={carTrafficStatus}
@@ -454,12 +492,12 @@ export default function ConsoleCommandPanel({
                 disabled={sending || trafficPending}
               />
               
-              {renderCommandSection(boatEventSection)}
-              {renderCommandSection(motorSection)}
-              {renderCommandSection(safetyTestSection)}
+              {renderBoatEventSection()}
+              {renderMotorSection()}
+              {renderSafetySection()}
             </div>
             
-            {/* Ultrasonic Streaming */}
+            {/* Ultrasonic Streaming - Full Width */}
             <div className="rounded-md border border-base-300 p-3 bg-gray-50">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2">
@@ -476,14 +514,14 @@ export default function ConsoleCommandPanel({
                     : "Off"}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   disabled={sending}
                   onClick={() => {
                     void handleUltrasonicToggle("both");
                   }}
-                  className={`rounded border px-2.5 py-1.5 text-xs font-medium transition-all flex items-center gap-1 ${
+                  className={`rounded border px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${
                     bothActive 
                       ? "bg-blue-600 border-blue-600 text-white" 
                       : "border-base-300 text-gray-700 hover:border-blue-500 hover:bg-blue-50"
@@ -498,7 +536,7 @@ export default function ConsoleCommandPanel({
                   onClick={() => {
                     void handleUltrasonicToggle("left");
                   }}
-                  className={`rounded border px-2.5 py-1.5 text-xs font-medium transition-all flex items-center gap-1 ${
+                  className={`rounded border px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${
                     leftActive 
                       ? "bg-blue-600 border-blue-600 text-white" 
                       : "border-base-300 text-gray-700 hover:border-blue-500 hover:bg-blue-50"
@@ -513,7 +551,7 @@ export default function ConsoleCommandPanel({
                   onClick={() => {
                     void handleUltrasonicToggle("right");
                   }}
-                  className={`rounded border px-2.5 py-1.5 text-xs font-medium transition-all flex items-center gap-1 ${
+                  className={`rounded border px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${
                     rightActive 
                       ? "bg-blue-600 border-blue-600 text-white" 
                       : "border-base-300 text-gray-700 hover:border-blue-500 hover:bg-blue-50"
@@ -524,7 +562,7 @@ export default function ConsoleCommandPanel({
                 </button>
               </div>
             </div>
-          </div>
+          </>
         ) : null}
         
         {/* Feedback messages at bottom */}

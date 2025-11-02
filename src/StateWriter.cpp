@@ -2,6 +2,7 @@
 #include "Logger.h"
 #include "ConsoleCommands.h"
 #include "SignalControl.h"
+#include "DetectionSystem.h"
 
 StateWriter::StateWriter(EventBus& bus) : bus_(bus) {}
 
@@ -11,6 +12,10 @@ void StateWriter::attachConsole(ConsoleCommands* console) {
 
 void StateWriter::attachSignalControl(SignalControl* signalControl) {
     signalControl_ = signalControl;
+}
+
+void StateWriter::attachDetectionSystem(DetectionSystem* detectionSystem) {
+    detectionSystem_ = detectionSystem;
 }
 
 // Below subscribes all events that the FSM / subsystems publish.
@@ -107,6 +112,30 @@ void StateWriter::fillSystemStatus(JsonObject obj) const {
     }
 }
 
+void StateWriter::fillSensorStatus(JsonObject obj) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    
+    if (!detectionSystem_) {
+        return;
+    }
+    
+    // Left ultrasonic sensor
+    JsonObject leftUltrasonic = obj["leftUltrasonic"].to<JsonObject>();
+    leftUltrasonic["distanceCm"] = detectionSystem_->getLeftFilteredDistanceCm();
+    leftUltrasonic["zone"] = detectionSystem_->getLeftZoneName();
+    
+    // Right ultrasonic sensor
+    JsonObject rightUltrasonic = obj["rightUltrasonic"].to<JsonObject>();
+    rightUltrasonic["distanceCm"] = detectionSystem_->getRightFilteredDistanceCm();
+    rightUltrasonic["zone"] = detectionSystem_->getRightZoneName();
+    
+    // Beam break sensor
+    obj["beamBreak"] = detectionSystem_->readBeamBreak();
+    
+    // Boat direction
+    obj["direction"] = detectionSystem_->getDirectionName();
+}
+
 void StateWriter::buildSnapshot(JsonDocument& out) const {
     // envelope
     out["v"] = 1;
@@ -124,6 +153,9 @@ void StateWriter::buildSnapshot(JsonDocument& out) const {
 
     JsonObject system = p["system"].to<JsonObject>();
     fillSystemStatus(system);
+
+    JsonObject sensors = p["sensors"].to<JsonObject>();
+    fillSensorStatus(sensors);
 
     JsonArray logArr = p["log"].to<JsonArray>();
     {

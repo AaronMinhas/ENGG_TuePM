@@ -4,6 +4,7 @@ import {
   CarTrafficStatus,
   BoatTrafficStatus,
   SystemStatus,
+  SensorStatus,
   SystemState,
   CarTrafficState,
   BoatTrafficState,
@@ -26,6 +27,7 @@ export function useESPStatus(
   const [carTrafficStatus, setCarTrafficStatus] = useState<CarTrafficStatus | null>(null);
   const [boatTrafficStatus, setBoatTrafficStatus] = useState<BoatTrafficStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [sensorStatus, setSensorStatus] = useState<SensorStatus | null>(null);
 
   const handleFetchSystem = async () => {
     try {
@@ -179,6 +181,8 @@ export function useESPStatus(
     setBoatTrafficStatus,
     systemStatus,
     setSystemStatus,
+    sensorStatus,
+    setSensorStatus,
     handleFetchSystem,
     handleOpenBridge,
     handleCloseBridge,

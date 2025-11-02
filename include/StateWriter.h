@@ -9,6 +9,7 @@
 
 class ConsoleCommands;
 class SignalControl;
+class DetectionSystem;
 
 class StateWriter {
 public:
@@ -17,11 +18,13 @@ public:
   void beginSubscriptions();
   void attachConsole(ConsoleCommands* console);
   void attachSignalControl(SignalControl* signalControl);
+  void attachDetectionSystem(DetectionSystem* detectionSystem);
 
   void fillBridgeStatus(JsonObject obj) const;
   void fillCarTrafficStatus(JsonObject obj) const;
   void fillBoatTrafficStatus(JsonObject obj) const;
   void fillSystemStatus(JsonObject obj) const;
+  void fillSensorStatus(JsonObject obj) const;
 
   void buildSnapshot(JsonDocument& out) const;
 
@@ -31,6 +34,7 @@ private:
   EventBus& bus_;
   ConsoleCommands* console_ = nullptr;
   SignalControl* signalControl_ = nullptr;
+  DetectionSystem* detectionSystem_ = nullptr;
   mutable std::mutex mu_;
 
   String bridgeState_ = "IDLE";

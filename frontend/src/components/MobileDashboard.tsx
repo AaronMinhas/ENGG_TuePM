@@ -1,16 +1,18 @@
 import React from "react";
-import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, CarTrafficState, BoatTrafficState } from "../lib/schema";
+import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, SensorStatus, CarTrafficState, BoatTrafficState } from "../lib/schema";
 import { Icon, ActivityEntry } from "../types/GenTypes";
 import { timeAgo } from "../utils/timeAgo";
 import DashCard from "./DashCard";
 import BridgeCard from "./BridgeCard";
 import ActivitySec from "./ActivitySec";
+import SensorsCard from "./SensorsCard";
 
 interface MobileDashboardProps {
   readonly bridgeStatus: BridgeStatus | null;
   readonly carTrafficStatus: CarTrafficStatus | null;
   readonly boatTrafficStatus: BoatTrafficStatus | null;
   readonly systemStatus: SystemStatus | null;
+  readonly sensorStatus: SensorStatus | null;
   readonly packetsSent: number;
   readonly packetsReceived: number;
   readonly lastSentAt: number | null;
@@ -29,6 +31,7 @@ export default function MobileDashboard({
   carTrafficStatus,
   boatTrafficStatus,
   systemStatus,
+  sensorStatus,
   packetsSent,
   packetsReceived,
   lastSentAt,
@@ -64,7 +67,6 @@ export default function MobileDashboard({
           { id: "m-b-c", label: "Close", action: handleCloseBridge },
         ]}
         description={bridgeStatus?.state || ""}
-        updatedAt={bridgeStatus?.receivedAt ? timeAgo(bridgeStatus?.receivedAt) : ""}
         status={bridgeStatus?.state ? { kind: "bridge", value: bridgeStatus.state } : undefined}
         disabled={controlsDisabled}
       />
@@ -74,7 +76,6 @@ export default function MobileDashboard({
         iconT={Icon.SYSTEM}
         options={[{ id: "m-s", label: "Update Status", action: handleFetchSystem }]}
         description={systemStatus?.connection || ""}
-        updatedAt={systemStatus?.receivedAt ? timeAgo(systemStatus?.receivedAt) : ""}
         status={systemStatus?.connection ? { kind: "system", value: systemStatus.connection } : undefined}
       />
       <DashCard
@@ -87,7 +88,6 @@ export default function MobileDashboard({
           { id: "m-c-g", label: "Green", action: () => handleCarTraffic("Green") },
         ]}
         description={carTrafficStatus?.left.value || carTrafficStatus?.right.value || ""}
-        updatedAt={carTrafficStatus?.left.receivedAt ? timeAgo(carTrafficStatus?.left.receivedAt) : ""}
         status={
           carTrafficStatus?.left.value ? { kind: "car", value: carTrafficStatus.left.value } : undefined
         }
@@ -117,9 +117,11 @@ export default function MobileDashboard({
             ? { kind: "boat", value: boatTrafficStatus.right.value }
             : undefined
         }
-        updatedAt={boatTrafficStatus?.left.receivedAt ? timeAgo(boatTrafficStatus?.left.receivedAt) : ""}
         disabled={controlsDisabled}
       />
+      <div className="col-span-2 row-span-2">
+        <SensorsCard sensorStatus={sensorStatus} />
+      </div>
       <DashCard
         title="Packets Sent"
         iconT={Icon.PACKETS_SEND}

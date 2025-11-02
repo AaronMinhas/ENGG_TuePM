@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getESPClient, getBridgeState, getCarTrafficState, getBoatTrafficState, getSystemState, reconnectWebSocket } from "../lib/api";
-import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, EventMsgT } from "../lib/schema";
+import { BridgeStatus, CarTrafficStatus, BoatTrafficStatus, SystemStatus, SensorStatus, EventMsgT } from "../lib/schema";
 import { IP } from "../types/GenTypes";
 
 function parseLogLine(line: string): { sequence: number | null; message: string } {
@@ -25,6 +25,7 @@ interface UseESPWebSocketProps {
   setCarTrafficStatus: React.Dispatch<React.SetStateAction<CarTrafficStatus | null>>;
   setBoatTrafficStatus: React.Dispatch<React.SetStateAction<BoatTrafficStatus | null>>;
   setSystemStatus: React.Dispatch<React.SetStateAction<SystemStatus | null>>;
+  setSensorStatus: React.Dispatch<React.SetStateAction<SensorStatus | null>>;
   incrementReceived: (count?: number) => void;
   logActivity: (type: "sent" | "received", message: string) => void;
   carTrafficStatus: CarTrafficStatus | null;
@@ -41,6 +42,7 @@ export function useESPWebSocket({
   setCarTrafficStatus,
   setBoatTrafficStatus,
   setSystemStatus,
+  setSensorStatus,
   incrementReceived,
   logActivity,
   carTrafficStatus,
@@ -106,8 +108,27 @@ export function useESPWebSocket({
           uptimeMs: sys.uptimeMs,
           simulation: typeof sys.simulation === "boolean" ? sys.simulation : prev?.simulation,
           simulationSensors: sys.simulationSensors ?? prev?.simulationSensors,
+          ultrasonicStreaming: sys.ultrasonicStreaming ?? prev?.ultrasonicStreaming,
+          logLevel: sys.logLevel ?? prev?.logLevel,
           receivedAt: Date.now(),
         }));
+
+      const sensors = payload.sensors || {};
+      if (sensors.leftUltrasonic || sensors.rightUltrasonic) {
+        setSensorStatus({
+          leftUltrasonic: {
+            distanceCm: sensors.leftUltrasonic?.distanceCm ?? -1,
+            zone: sensors.leftUltrasonic?.zone ?? "none",
+          },
+          rightUltrasonic: {
+            distanceCm: sensors.rightUltrasonic?.distanceCm ?? -1,
+            zone: sensors.rightUltrasonic?.zone ?? "none",
+          },
+          beamBreak: sensors.beamBreak ?? false,
+          direction: sensors.direction ?? "none",
+          receivedAt: Date.now(),
+        });
+      }
 
       if (bridge.state && bridge.state !== lastBridgeStateRef.current) {
         lastBridgeStateRef.current = bridge.state;

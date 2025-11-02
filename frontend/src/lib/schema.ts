@@ -85,6 +85,23 @@ export interface UltrasonicStreamingStatus {
   right: boolean;
 }
 
+export type SensorZone = "far" | "near" | "close" | "none";
+
+export interface UltrasonicSensorStatus {
+  distanceCm: number;
+  zone: SensorZone;
+}
+
+export type BoatDirection = "left-to-right" | "right-to-left" | "none";
+
+export interface SensorStatus {
+  leftUltrasonic: UltrasonicSensorStatus;
+  rightUltrasonic: UltrasonicSensorStatus;
+  beamBreak: boolean;
+  direction: BoatDirection;
+  receivedAt?: number;
+}
+
 export type SystemState = "Connected" | "Connecting" | "Disconnected";
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR" | "NONE";
 export interface SystemStatus {

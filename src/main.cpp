@@ -168,6 +168,7 @@ void setup() {
     wss.attachConsole(&console);
     stateWriter.attachConsole(&console);
     stateWriter.attachSignalControl(&signalControl);
+    stateWriter.attachDetectionSystem(&detectionSystem);
     
     LOG_INFO(Logger::TAG_SYS, "=== Bridge Control System Ready ===");
     LOG_INFO(Logger::TAG_SYS, "State Machine: %s", stateMachine.getStateString().c_str());
