@@ -2,16 +2,33 @@
 #include "Logger.h"
 #include "MotorControl.h"
 #include "SignalControl.h"
+#include "DetectionSystem.h" 
 #include <Arduino.h>
 
 bool testFaultActive = false;
 
 SafetyManager::SafetyManager(EventBus &eventBus, CommandBus &commandBus)
-    : m_eventBus(eventBus), m_commandBus(commandBus), m_motorControl(nullptr), m_signalControl(nullptr), m_emergencyActive(false), m_simulationMode(true) // Start in simulation mode by default
-      ,
-      m_lastStateEvent(BridgeEvent::FAULT_CLEARED) // Safe initial value
-      ,
-      m_stateEventTime(0), m_lastFaultReason("")
+    : m_eventBus(eventBus), m_commandBus(commandBus), 
+      m_motorControl(nullptr), 
+      m_signalControl(nullptr), 
+      m_detectionSystem(nullptr), 
+      m_emergencyActive(false), 
+      m_simulationMode(true),  // Start in simulation mode by default
+      m_lastStateEvent(BridgeEvent::FAULT_CLEARED),  // Safe initial value
+      m_stateEventTime(0), 
+      m_lastFaultReason(""),
+      // Initialise sensor health tracking
+      m_leftSensorFailureCount(0),
+      m_leftIdenticalReadingCount(0),
+      m_lastLeftReading(-999.0f),
+      m_lastLeftValidReadingTime(0),
+      m_leftSensorFailed(false),
+      m_rightSensorFailureCount(0),
+      m_rightIdenticalReadingCount(0),
+      m_lastRightReading(-999.0f),
+      m_lastRightValidReadingTime(0),
+      m_rightSensorFailed(false),
+      m_degradedMode(false)
 {
 }
 
@@ -52,6 +69,9 @@ void SafetyManager::update()
 
     // Check state transition timeouts
     checkStateTransitionTimeouts();
+    
+    // Check ultrasonic sensor health
+    checkSensorHealth();
 }
 
 void SafetyManager::triggerEmergency(const char *reason)
@@ -101,6 +121,12 @@ void SafetyManager::setMotorControl(MotorControl *motorControl)
 void SafetyManager::setSignalControl(SignalControl *signalControl)
 {
     m_signalControl = signalControl;
+}
+
+void SafetyManager::setDetectionSystem(DetectionSystem *detectionSystem)
+{
+    m_detectionSystem = detectionSystem;
+    LOG_INFO(Logger::TAG_SYS, "DetectionSystem reference set for sensor health monitoring");
 }
 
 void SafetyManager::setSimulationMode(bool enabled)
@@ -343,6 +369,153 @@ unsigned long SafetyManager::getStateTimeout(BridgeEvent stateEvent)
 
     default:
         return 5000; // Default 5-second timeout for unspecified states
+    }
+}
+
+// Check ultrasonic sensor health
+void SafetyManager::checkSensorHealth()
+{
+    // Skip if DetectionSystem reference is not set
+    if (m_detectionSystem == nullptr)
+    {
+        return;
+    }
+
+    const unsigned long now = millis();
+    const float READING_TOLERANCE = 0.5f;  // cm - readings within this are considered identical
+    
+    // Get current sensor readings
+    float leftReading = m_detectionSystem->getLeftFilteredDistanceCm();
+    float rightReading = m_detectionSystem->getRightFilteredDistanceCm();
+    
+    // Check left sensor health
+    bool leftReadingValid = (leftReading >= 2.0f && leftReading <= 400.0f);
+    
+    if (!leftReadingValid)
+    {
+        // Invalid reading detected
+        m_leftSensorFailureCount++;
+        LOG_DEBUG(Logger::TAG_SYS, "Left sensor invalid reading: %.2f cm (failure count: %d)",
+                  leftReading, m_leftSensorFailureCount);
+    }
+    else
+    {
+        // Valid reading
+        m_leftSensorFailureCount = 0;  // Reset failure counter
+        m_lastLeftValidReadingTime = now;
+        
+        // Check for stuck sensor (identical readings)
+        if (abs(leftReading - m_lastLeftReading) < READING_TOLERANCE)
+        {
+            m_leftIdenticalReadingCount++;
+            if (m_leftIdenticalReadingCount >= MAX_IDENTICAL_READINGS)
+            {
+                LOG_WARN(Logger::TAG_SYS, "Left sensor may be stuck at %.2f cm (%d identical readings)",
+                         leftReading, m_leftIdenticalReadingCount);
+            }
+        }
+        else
+        {
+            m_leftIdenticalReadingCount = 0;  // Reset identical counter
+        }
+        
+        m_lastLeftReading = leftReading;
+    }
+    
+    // Check failure conditions for left sensor
+    unsigned long leftTimeSinceValid = (m_lastLeftValidReadingTime > 0) ? (now - m_lastLeftValidReadingTime) : 0;
+    
+    if (!m_leftSensorFailed)
+    {
+        if (m_leftSensorFailureCount >= MAX_CONSECUTIVE_FAILURES)
+        {
+            m_leftSensorFailed = true;
+            LOG_ERROR(Logger::TAG_SYS, "LEFT ULTRASONIC SENSOR FAILURE: %d consecutive invalid readings",
+                      m_leftSensorFailureCount);
+            LOG_ERROR(Logger::TAG_SYS, "Last reading: %.2f cm", leftReading);
+            m_degradedMode = true;
+            LOG_WARN(Logger::TAG_SYS, "System entering DEGRADED MODE - left sensor offline");
+        }
+        else if (m_lastLeftValidReadingTime > 0 && leftTimeSinceValid > SENSOR_TIMEOUT_MS)
+        {
+            m_leftSensorFailed = true;
+            LOG_ERROR(Logger::TAG_SYS, "LEFT ULTRASONIC SENSOR FAILURE: No valid readings for %lu ms",
+                      leftTimeSinceValid);
+            LOG_ERROR(Logger::TAG_SYS, "Last valid reading: %.2f cm", m_lastLeftReading);
+            m_degradedMode = true;
+            LOG_WARN(Logger::TAG_SYS, "System entering DEGRADED MODE - left sensor timeout");
+        }
+    }
+    
+    // Check right sensor health
+    bool rightReadingValid = (rightReading >= 2.0f && rightReading <= 400.0f);
+    
+    if (!rightReadingValid)
+    {
+        // Invalid reading detected
+        m_rightSensorFailureCount++;
+        LOG_DEBUG(Logger::TAG_SYS, "Right sensor invalid reading: %.2f cm (failure count: %d)",
+                  rightReading, m_rightSensorFailureCount);
+    }
+    else
+    {
+        // Valid reading
+        m_rightSensorFailureCount = 0;  // Reset failure counter
+        m_lastRightValidReadingTime = now;
+        
+        // Check for stuck sensor (identical readings)
+        if (abs(rightReading - m_lastRightReading) < READING_TOLERANCE)
+        {
+            m_rightIdenticalReadingCount++;
+            if (m_rightIdenticalReadingCount >= MAX_IDENTICAL_READINGS)
+            {
+                LOG_WARN(Logger::TAG_SYS, "Right sensor may be stuck at %.2f cm (%d identical readings)",
+                         rightReading, m_rightIdenticalReadingCount);
+            }
+        }
+        else
+        {
+            m_rightIdenticalReadingCount = 0;  // Reset identical counter
+        }
+        
+        m_lastRightReading = rightReading;
+    }
+    
+    // Check failure conditions for right sensor
+    unsigned long rightTimeSinceValid = (m_lastRightValidReadingTime > 0) ? (now - m_lastRightValidReadingTime) : 0;
+    
+    if (!m_rightSensorFailed)
+    {
+        if (m_rightSensorFailureCount >= MAX_CONSECUTIVE_FAILURES)
+        {
+            m_rightSensorFailed = true;
+            LOG_ERROR(Logger::TAG_SYS, "RIGHT ULTRASONIC SENSOR FAILURE: %d consecutive invalid readings",
+                      m_rightSensorFailureCount);
+            LOG_ERROR(Logger::TAG_SYS, "Last reading: %.2f cm", rightReading);
+            m_degradedMode = true;
+            LOG_WARN(Logger::TAG_SYS, "System entering DEGRADED MODE - right sensor offline");
+        }
+        else if (m_lastRightValidReadingTime > 0 && rightTimeSinceValid > SENSOR_TIMEOUT_MS)
+        {
+            m_rightSensorFailed = true;
+            LOG_ERROR(Logger::TAG_SYS, "RIGHT ULTRASONIC SENSOR FAILURE: No valid readings for %lu ms",
+                      rightTimeSinceValid);
+            LOG_ERROR(Logger::TAG_SYS, "Last valid reading: %.2f cm", m_lastRightReading);
+            m_degradedMode = true;
+            LOG_WARN(Logger::TAG_SYS, "System entering DEGRADED MODE - right sensor timeout");
+        }
+    }
+    
+    // Update degraded mode flag
+    bool wasDegraded = m_degradedMode;
+    m_degradedMode = m_leftSensorFailed || m_rightSensorFailed;
+    
+    // Log when exiting degraded mode (both sensors recovered)
+    if (wasDegraded && !m_degradedMode)
+    {
+        LOG_INFO(Logger::TAG_SYS, "System exiting DEGRADED MODE - all sensors operational");
+        m_leftSensorFailed = false;
+        m_rightSensorFailed = false;
     }
 }
 

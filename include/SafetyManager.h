@@ -41,6 +41,7 @@ public:
     // These must be set during initialization
     void setMotorControl(class MotorControl* motorControl);
     void setSignalControl(class SignalControl* signalControl);
+    void setDetectionSystem(class DetectionSystem* detectionSystem);  // Ultrasonic sensor health monitoring
     
     // Simulation mode for testing
     void setSimulationMode(bool enabled);
@@ -58,6 +59,7 @@ private:
     // Direct references for emergency control
     class MotorControl* m_motorControl;
     class SignalControl* m_signalControl;
+    class DetectionSystem* m_detectionSystem;  // Ultrasonic sensor health monitoring
     
     // Thread safety
     std::mutex m_mutex;
@@ -80,9 +82,32 @@ private:
     // Last fault reason for logging
     String m_lastFaultReason;
     
+    // Ultrasonic sensor health monitoring
+    static constexpr int MAX_CONSECUTIVE_FAILURES = 10;
+    static constexpr unsigned long SENSOR_TIMEOUT_MS = 5000;  // 5 seconds
+    static constexpr int MAX_IDENTICAL_READINGS = 20;  // Detect stuck sensors
+    
+    // Left sensor health tracking
+    int m_leftSensorFailureCount;
+    int m_leftIdenticalReadingCount;
+    float m_lastLeftReading;
+    unsigned long m_lastLeftValidReadingTime;
+    bool m_leftSensorFailed;
+    
+    // Right sensor health tracking
+    int m_rightSensorFailureCount;
+    int m_rightIdenticalReadingCount;
+    float m_lastRightReading;
+    unsigned long m_lastRightValidReadingTime;
+    bool m_rightSensorFailed;
+    
+    // System degraded mode flag
+    bool m_degradedMode;
+    
     // Private methods
     void enterSafeState(const char* reason);
     void checkStateTransitionTimeouts();
+    void checkSensorHealth();  // Monitor ultrasonic sensor health
     void onEvent(EventData* data);
     void handleCommand(const Command& command);
     

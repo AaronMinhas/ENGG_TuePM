@@ -3,11 +3,12 @@
 #include "DetectionSystem.h"
 #include "EventBus.h"
 #include "SignalControl.h"
+#include "SafetyManager.h"
 #include "BridgeSystemDefs.h"
 #include "Logger.h"
 
-ConsoleCommands::ConsoleCommands(MotorControl &motor, DetectionSystem &detect, EventBus& eventBus, SignalControl& signalControl)
-    : motor_(motor), detect_(detect), eventBus_(eventBus), signalControl_(signalControl) {}
+ConsoleCommands::ConsoleCommands(MotorControl &motor, DetectionSystem &detect, EventBus& eventBus, SignalControl& signalControl, SafetyManager& safetyManager)
+    : motor_(motor), detect_(detect), eventBus_(eventBus), signalControl_(signalControl), safetyManager_(safetyManager) {}
 
 void ConsoleCommands::begin()
 {
@@ -172,6 +173,28 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
     motor_.simulateLimitSwitchPress();
     return true;
   }
+  
+  // Test fault commands
+  if (cmd == "test fault" || cmd == "tf") {
+    safetyManager_.triggerTestFault();
+    LOG_INFO(Logger::TAG_CON, "TEST: Manual test fault triggered");
+    return true;
+  }
+  if (cmd == "test clear" || cmd == "tc") {
+    safetyManager_.clearTestFault();
+    LOG_INFO(Logger::TAG_CON, "TEST: Test fault cleared");
+    return true;
+  }
+  if (cmd == "test status" || cmd == "ts") {
+    const bool faultActive = safetyManager_.isTestFaultActive();
+    const bool emergencyActive = safetyManager_.isEmergencyActive();
+    const bool simMode = safetyManager_.isSimulationMode();
+    LOG_INFO(Logger::TAG_CON, "TEST STATUS: Fault=%s, Emergency=%s, SimMode=%s",
+             faultActive ? "ACTIVE" : "INACTIVE",
+             emergencyActive ? "ACTIVE" : "INACTIVE",
+             simMode ? "ENABLED" : "DISABLED");
+    return true;
+  }
 
   // Ultrasonic/detection commands
   // Short toggle: 'us' toggles streaming (both sensors); 'us state' prints status
@@ -250,6 +273,9 @@ void ConsoleCommands::printHelp()
   Serial.println("  test boat right|tbr      - Simulate boat detected from RIGHT");
   Serial.println("  test boat pass|tbp       - Simulate boat cleared channel (beam break)");
   Serial.println("  test limit|tl            - Simulate limit switch press (triggers normal stop)");
+  Serial.println("  test fault|tf            - Trigger a manual test fault (emergency stop)");
+  Serial.println("  test clear|tc            - Clear the test fault and reset system");
+  Serial.println("  test status|ts           - Show test fault and safety status");
   Serial.println("  car light <colour>|cl <colour>  - Set car lights (red/yellow/green)");
   Serial.println("  boat light <side> <colour>|bl <side> <colour>  - Set boat lights (left/right, red/green)");
   Serial.println("  lights status|ls          - Show light control status");

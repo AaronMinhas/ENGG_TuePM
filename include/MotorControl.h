@@ -48,6 +48,10 @@ private:
     bool m_simulationMode;           // Toggle for simulation/test mode
     bool m_limitCleared;
     
+    // Motor stall detection
+    unsigned long m_operationStartTime;
+    static const unsigned long MAX_OPERATION_TIME_MS = 10000; // 10 second timeout
+    
     // Simulation variables
     bool m_simulatedLimitPressed;    // Simulated limit switch state
     

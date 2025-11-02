@@ -44,7 +44,7 @@ WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus, detection
 SafetyManager safetyManager(systemEventBus, systemCommandBus);
 
 // Console router
-ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl);
+ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl, safetyManager);
 
 // Task handles for FreeRTOS
 TaskHandle_t controlLogicTaskHandle = NULL;
@@ -126,6 +126,7 @@ void setup() {
     LOG_INFO(Logger::TAG_SYS, "Initializing Safety Manager...");
     safetyManager.setMotorControl(&motorControl);
     safetyManager.setSignalControl(&signalControl);
+    safetyManager.setDetectionSystem(&detectionSystem);  // Start sensor health monitoring
     safetyManager.begin();
     
     LOG_INFO(Logger::TAG_MC, "Initialising Motor Control...");

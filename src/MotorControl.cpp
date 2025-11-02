@@ -9,6 +9,7 @@ MotorControl::MotorControl(EventBus& eventBus)
       m_raisingBridge(false),
       m_simulationMode(false),      // Start in real mode by default
       m_limitCleared(false),
+      m_operationStartTime(0),      // Motor stall detection timer
       m_simulatedLimitPressed(false),
       m_inGracePeriod(false),
       m_graceEndsAt(0) {
@@ -50,6 +51,7 @@ void MotorControl::raiseBridge() {
     m_limitCleared = !isLimitSwitchActive();
     m_inGracePeriod = false;
     m_graceEndsAt = 0;
+    m_operationStartTime = millis();  
 
     if (!m_limitCleared) {
         LOG_DEBUG(Logger::TAG_MC, "Starting raise with limit engaged - waiting for release before honouring stops");
@@ -74,6 +76,7 @@ void MotorControl::lowerBridge() {
     m_limitCleared = !isLimitSwitchActive();
     m_inGracePeriod = false;
     m_graceEndsAt = 0;
+    m_operationStartTime = millis(); 
 
     if (!m_limitCleared) {
         LOG_DEBUG(Logger::TAG_MC, "Starting lower with limit engaged - waiting for release before honouring stops");
@@ -89,8 +92,29 @@ void MotorControl::checkProgress() {
         return; // No operation in progress
     }
 
-    const bool limitActive = isLimitSwitchActive();
     const unsigned long now = millis();
+    
+    // Check for motor stall timeout
+    if (m_operationStartTime > 0) {
+        unsigned long elapsed = now - m_operationStartTime;
+        if (elapsed > MAX_OPERATION_TIME_MS) {
+            const char* direction = m_raisingBridge ? "RAISING" : "LOWERING";
+            LOG_ERROR(Logger::TAG_MC, "MOTOR STALL DETECTED: %s operation exceeded timeout", direction);
+            LOG_ERROR(Logger::TAG_MC, "Elapsed time: %lu ms, Timeout threshold: %lu ms", 
+                      elapsed, MAX_OPERATION_TIME_MS);
+            
+            stopMotor();
+            
+            // Publish FAULT_DETECTED event
+            auto* eventData = new SimpleEventData(BridgeEvent::FAULT_DETECTED);
+            m_eventBus.publish(BridgeEvent::FAULT_DETECTED, eventData, EventPriority::EMERGENCY);
+            LOG_ERROR(Logger::TAG_MC, "FAULT_DETECTED event published due to motor stall timeout");
+            
+            return; // Exit early - motor stopped due to timeout
+        }
+    }
+
+    const bool limitActive = isLimitSwitchActive();
 
     if (!limitActive) {
         if (!m_limitCleared) {
@@ -132,6 +156,7 @@ void MotorControl::checkProgress() {
 
 void MotorControl::halt() {
     LOG_WARN(Logger::TAG_MC, "Emergency halt command received.");
+    m_operationStartTime = 0;  // Reset stall detection timer
     stopMotor();
     LOG_WARN(Logger::TAG_MC, "Motor stopped immediately");
 }
@@ -221,6 +246,7 @@ void MotorControl::stopMotor() {
     m_simulatedLimitPressed = false;  // Reset simulation flag
     m_inGracePeriod = false;
     m_graceEndsAt = 0;
+    m_operationStartTime = 0;  // Reset stall detection timer
     
     LOG_INFO(Logger::TAG_MC, "Motor stopped");
 }
