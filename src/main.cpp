@@ -105,7 +105,7 @@ void networkTask(void* parameters) {
         // Periodically attempt WiFi connection
         wss.networkLoop();
         
-        // Broadcast sensor data periodically (5 Hz / every 200ms)
+        // Broadcast sensor data periodically (0.5 Hz / every 2 seconds)
         wss.periodicSensorBroadcast();
         
         vTaskDelay(pdMS_TO_TICKS(50)); // Run at 20 Hz to ensure timely broadcasts
