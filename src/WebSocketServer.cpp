@@ -111,6 +111,16 @@ void WebSocketServer::networkLoop() {
     }
 }
 
+void WebSocketServer::periodicSensorBroadcast() {
+    if (!serverStarted_) return;
+    
+    const unsigned long now = millis();
+    if (now - lastSensorBroadcastMs_ >= SENSOR_BROADCAST_INTERVAL_MS) {
+        broadcastSensors();
+        lastSensorBroadcastMs_ = now;
+    }
+}
+
 void WebSocketServer::fillBridgeStatus(JsonObject obj) {
     state_.fillBridgeStatus(obj);
 }
@@ -131,6 +141,24 @@ void WebSocketServer::broadcastSnapshot() {
     DynamicJsonDocument doc(1024);
     state_.buildSnapshot(doc);
     String out; serializeJson(doc, out);
+    ws.textAll(out);
+}
+
+void WebSocketServer::broadcastSensors() {
+    // Only broadcast if we have connected clients
+    if (ws.count() == 0) return;
+    
+    DynamicJsonDocument doc(512);
+    doc["v"] = 1;
+    doc["type"] = "event";
+    doc["path"] = "/system/sensors";
+    
+    JsonObject payload = doc["payload"].to<JsonObject>();
+    JsonObject sensors = payload["sensors"].to<JsonObject>();
+    state_.fillSensorStatus(sensors);
+    
+    String out;
+    serializeJson(doc, out);
     ws.textAll(out);
 }
 

@@ -59,7 +59,33 @@ export function useESPWebSocket({
     clientRef.current = client;
 
     client.onEvent((evt: EventMsgT) => {
-      if (evt.type !== "event" || evt.path !== "/system/snapshot") return;
+      if (evt.type !== "event") return;
+      
+      // Handle dedicated sensor updates
+      if (evt.path === "/system/sensors") {
+        const payload: any = evt.payload || {};
+        const sensors = payload.sensors || {};
+        
+        if (sensors.leftUltrasonic || sensors.rightUltrasonic) {
+          setSensorStatus({
+            leftUltrasonic: {
+              distanceCm: sensors.leftUltrasonic?.distanceCm ?? -1,
+              zone: sensors.leftUltrasonic?.zone ?? "none",
+            },
+            rightUltrasonic: {
+              distanceCm: sensors.rightUltrasonic?.distanceCm ?? -1,
+              zone: sensors.rightUltrasonic?.zone ?? "none",
+            },
+            beamBreak: sensors.beamBreak ?? false,
+            direction: sensors.direction ?? "none",
+            receivedAt: Date.now(),
+          });
+        }
+        return;
+      }
+      
+      // Handle full system snapshot
+      if (evt.path !== "/system/snapshot") return;
       const payload: any = evt.payload || {};
       const bridge = payload.bridge || {};
       const traffic = payload.traffic || {};
