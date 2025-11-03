@@ -153,7 +153,10 @@ void setup() {
 
     LOG_INFO(Logger::TAG_DS, "Initialising Detection System (ultrasonic)...");
     detectionSystem.begin();
-    LOG_INFO(Logger::TAG_DS, "Detection System ready for bi-directional boat tracking");
+    LOG_INFO(Logger::TAG_DS, "Detection System ready - single boat mode (opposite sensor disabled during cycle)");
+    
+    // Connect detection system to state machine for sensor control
+    stateMachine.setDetectionSystem(&detectionSystem);
 
     // Default to simulation mode on boot (both sensors and motor control)
     detectionSystem.setSimulationMode(true);

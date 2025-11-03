@@ -5,7 +5,8 @@
 
 // ------------------- Configuration -------------------
 // Boat passage clearance relies on the beam break sensor; ultrasonic sensors
-// continue providing directional detection for queue management.
+// provide directional detection. Only one boat served at a time - opposite sensor
+// disabled during boat cycle.
 
 // IR Beam Break Sensor Pin Definitions
 // Receiver output (white wire): LOW = beam broken (boat passing), HIGH = clear
@@ -26,7 +27,7 @@ static const float FAR_CM = 30.0f;   // 30 cm
 static const float NEAR_CM = 20.0f;  // 20 cm
 static const float CLOSE_CM = 10.0f; // 10 cm
 // Event threshold (critical distance) for BOAT_DETECTED/BOAT_PASSED
-static const float DETECT_THRESHOLD_CM = CLOSE_CM;
+static const float DETECT_THRESHOLD_CM = NEAR_CM;
 // Timing
 static const unsigned long SAMPLE_INTERVAL_MS = 100; // 10 Hz
 static const unsigned long DETECT_HOLD_MS = 800;     // must stay within detect range to trigger
@@ -68,8 +69,10 @@ void DetectionSystem::begin()
     beamBroken = false;
     beamBrokenEnterMs = 0;
     beamClearEnterMs = 0;
-    pendingBoatDirections.clear();
-    pendingPriorityDirection = BoatDirection::NONE;
+    
+    // Enable both sensors at startup
+    leftSensorEnabled = true;
+    rightSensorEnabled = true;
 
     // Setup both ultrasonic sensors
     pinMode(LEFT_TRIG_PIN, OUTPUT);
@@ -259,17 +262,13 @@ void DetectionSystem::checkInitialDetection()
         {
             boatDetected = true;
             boatDirection = direction;
-            pendingPriorityDirection = BoatDirection::NONE;
+            // Disable the opposite sensor to prevent conflicting detections
+            disableOppositeSensor(direction);
+            LOG_INFO(Logger::TAG_DS, "Opposite sensor disabled until bridge cycle completes");
         }
         else
         {
-            bool duplicate = !pendingBoatDirections.empty() && pendingBoatDirections.back() == direction;
-            if (!duplicate)
-            {
-                pendingBoatDirections.push_back(direction);
-                LOG_INFO(Logger::TAG_DS, "%s SENSOR: Detection queued while boat in progress (queue length=%u)",
-                         sensorName, static_cast<unsigned int>(pendingBoatDirections.size()));
-            }
+            LOG_DEBUG(Logger::TAG_DS, "%s SENSOR: Ignoring additional detection - boat cycle already active", sensorName);
         }
     };
 
@@ -282,14 +281,19 @@ void DetectionSystem::checkInitialDetection()
                              BoatDirection direction,
                              BoatEventSide eventSide,
                              BridgeEvent sideEvent,
-                             bool isLeftSensor) {
-        const bool isPriority = (pendingPriorityDirection == direction);
+                             bool isLeftSensor,
+                             bool sensorEnabled) {
+        // Skip processing if sensor is disabled
+        if (!sensorEnabled)
+        {
+            return;
+        }
+
         const bool allowEvents = allowUltrasonicEvents(isLeftSensor);
 
         if (!approachActive)
         {
-            if ((currentZone <= 1 && previousZone >= 2) ||
-                (isPriority && currentZone <= 2 && currentZone >= 0))
+            if (currentZone <= 1 && previousZone >= 2)
             {
                 approachActive = true;
                 criticalEnterMs = 0;
@@ -326,11 +330,6 @@ void DetectionSystem::checkInitialDetection()
             approachActive = false;
             criticalEnterMs = 0;
 
-            if (isPriority)
-            {
-                pendingPriorityDirection = BoatDirection::NONE;
-            }
-
             handleDetection(sensorName, direction, eventSide, sideEvent, allowEvents);
         }
     };
@@ -345,7 +344,8 @@ void DetectionSystem::checkInitialDetection()
                   BoatDirection::LEFT_TO_RIGHT,
                   BoatEventSide::LEFT,
                   BridgeEvent::BOAT_DETECTED_LEFT,
-                  true);
+                  true,
+                  leftSensorEnabled);
 
     const int currentRightZone = (rightLastZone < 0) ? 3 : rightLastZone;
     processSensor(rightEmaDistanceCm,
@@ -357,7 +357,8 @@ void DetectionSystem::checkInitialDetection()
                   BoatDirection::RIGHT_TO_LEFT,
                   BoatEventSide::RIGHT,
                   BridgeEvent::BOAT_DETECTED_RIGHT,
-                  false);
+                  false,
+                  rightSensorEnabled);
 }
 
 // Check if boat has passed through and exited on the other side
@@ -457,20 +458,6 @@ void DetectionSystem::checkBoatPassed()
     else
     {
         LOG_INFO(Logger::TAG_DS, "BEAM BREAK: SIM MODE - passed event suppressed (sensor disabled)");
-    }
-
-    if (!pendingBoatDirections.empty())
-    {
-        pendingPriorityDirection = pendingBoatDirections.front();
-        pendingBoatDirections.pop_front();
-        LOG_INFO(Logger::TAG_DS, "Queued boat detected earlier (%s to %s) - awaiting sensor reconfirmation (remaining queue length=%u)",
-                 (pendingPriorityDirection == BoatDirection::LEFT_TO_RIGHT) ? "LEFT" : "RIGHT",
-                 (pendingPriorityDirection == BoatDirection::LEFT_TO_RIGHT) ? "RIGHT" : "LEFT",
-                 static_cast<unsigned int>(pendingBoatDirections.size()));
-    }
-    else
-    {
-        pendingPriorityDirection = BoatDirection::NONE;
     }
 }
 
@@ -642,4 +629,60 @@ bool DetectionSystem::readBeamBreak() const
     // Output is LOW when beam is broken (boat passing), HIGH when clear
     int reading = digitalRead(BEAM_BREAK_RECEIVER_PIN);
     return (reading == LOW);  // true = beam broken
+}
+
+void DetectionSystem::disableOppositeSensor(BoatDirection direction)
+{
+    if (direction == BoatDirection::LEFT_TO_RIGHT)
+    {
+        // Boat detected on left, disable right sensor
+        rightSensorEnabled = false;
+        LOG_INFO(Logger::TAG_DS, "RIGHT sensor disabled (boat detected from LEFT)");
+    }
+    else if (direction == BoatDirection::RIGHT_TO_LEFT)
+    {
+        // Boat detected on right, disable left sensor
+        leftSensorEnabled = false;
+        LOG_INFO(Logger::TAG_DS, "LEFT sensor disabled (boat detected from RIGHT)");
+    }
+}
+
+void DetectionSystem::enableOppositeSensor(BoatDirection direction)
+{
+    if (direction == BoatDirection::LEFT_TO_RIGHT)
+    {
+        // Boat came from left, enable right sensor to detect it on the other side
+        if (!rightSensorEnabled)
+        {
+            rightSensorEnabled = true;
+            LOG_INFO(Logger::TAG_DS, "RIGHT sensor re-enabled (monitoring for boat arrival from LEFT)");
+        }
+    }
+    else if (direction == BoatDirection::RIGHT_TO_LEFT)
+    {
+        // Boat came from right, enable left sensor to detect it on the other side
+        if (!leftSensorEnabled)
+        {
+            leftSensorEnabled = true;
+            LOG_INFO(Logger::TAG_DS, "LEFT sensor re-enabled (monitoring for boat arrival from RIGHT)");
+        }
+    }
+}
+
+void DetectionSystem::resetBoatDetectionState()
+{
+    // Reset boat detection state so opposite sensor can trigger a new detection
+    boatDetected = false;
+    // Keep boatDirection as-is so we know which direction the boat came from
+    LOG_INFO(Logger::TAG_DS, "Boat detection state reset - opposite sensor can now trigger detection");
+}
+
+void DetectionSystem::enableAllSensors()
+{
+    if (!leftSensorEnabled || !rightSensorEnabled)
+    {
+        leftSensorEnabled = true;
+        rightSensorEnabled = true;
+        LOG_INFO(Logger::TAG_DS, "All sensors re-enabled (bridge cycle complete)");
+    }
 }

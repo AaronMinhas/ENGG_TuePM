@@ -40,6 +40,11 @@ public:
     // Beam break sensor methods
     bool readBeamBreak() const;  // Returns true if beam is broken (boat present)
 
+    // Sensor control (called by state machine)
+    void enableAllSensors();  // Re-enable both sensors after bridge cycle completes
+    void enableOppositeSensor(BoatDirection direction);  // Re-enable opposite sensor during clearance period
+    void resetBoatDetectionState();  // Reset boat detection state to allow opposite sensor to detect
+
     // Debug/status helpers
     float getLeftFilteredDistanceCm() const;  // Returns EMA-filtered distance (cm), <0 if unknown
     float getRightFilteredDistanceCm() const;
@@ -56,9 +61,13 @@ private:
     bool m_simUltrasonicLeftEnabled = false;
     bool m_simUltrasonicRightEnabled = false;
     bool m_simBeamBreakEnabled = false;
-    // Boat detection state (tracks the active direction plus queued boats waiting to cross)
+    // Boat detection state (tracks the active direction - no queuing)
     bool boatDetected = false;
     BoatDirection boatDirection = BoatDirection::NONE;
+    
+    // Sensor enable/disable control
+    bool leftSensorEnabled = true;
+    bool rightSensorEnabled = true;
     
     // Left sensor variables
     float leftEmaDistanceCm = -1.0f;
@@ -78,10 +87,6 @@ private:
     bool beamBroken = false;
     unsigned long beamBrokenEnterMs = 0;
     unsigned long beamClearEnterMs = 0;
-
-    // Pending boats detected while another boat is being processed
-    std::deque<BoatDirection> pendingBoatDirections;
-    BoatDirection pendingPriorityDirection = BoatDirection::NONE;
     
     // Timing
     unsigned long lastSampleMs = 0;
@@ -99,4 +104,5 @@ private:
     void publishSimulationSensorConfig() const;
     bool allowUltrasonicEvents(bool leftSensor) const;
     bool allowBeamBreakEvents() const;
+    void disableOppositeSensor(BoatDirection direction);
 };

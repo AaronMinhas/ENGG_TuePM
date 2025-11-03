@@ -38,7 +38,7 @@ private:
     // Limit switch pin (shared by both end-stop buttons)
     static const int LIMIT_SWITCH_PIN = 13;   // GPIO pin for limit switches
     static const int LIMIT_SWITCH_ACTIVE_STATE = LOW;
-    static const unsigned long LIMIT_RELEASE_GRACE_MS = 300; // Ignore limit re-trigger briefly after leaving switch
+    static const unsigned long LIMIT_RELEASE_GRACE_MS = 500; // Ignore limit re-trigger briefly after leaving switch
 
     static const int MAX_PWM = 255;          // Maximum PWM value
     

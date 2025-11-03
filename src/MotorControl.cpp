@@ -26,8 +26,14 @@ void MotorControl::init() {
     // Configure shared limit switch input on GPIO13 with internal pull-up
     pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);
     int initialLimitState = digitalRead(LIMIT_SWITCH_PIN);
-    LOG_INFO(Logger::TAG_MC, "Limit switch initial state: %s",
-             initialLimitState == LIMIT_SWITCH_ACTIVE_STATE ? "ACTIVE" : "INACTIVE");
+    LOG_INFO(Logger::TAG_MC, "=== LIMIT SWITCH CONFIGURATION ===");
+    LOG_INFO(Logger::TAG_MC, "Pin: GPIO%d | Raw value: %s | State: %s",
+             LIMIT_SWITCH_PIN,
+             initialLimitState == LOW ? "LOW" : "HIGH",
+             initialLimitState == LIMIT_SWITCH_ACTIVE_STATE ? "ACTIVE (pressed)" : "INACTIVE (released)");
+    LOG_INFO(Logger::TAG_MC, "Active trigger state: %s | Grace period: %lu ms",
+             LIMIT_SWITCH_ACTIVE_STATE == LOW ? "LOW" : "HIGH",
+             LIMIT_RELEASE_GRACE_MS);
     
     // Initialise motor to stopped state
     stopMotor();
@@ -54,7 +60,12 @@ void MotorControl::raiseBridge() {
     m_operationStartTime = millis();  
 
     if (!m_limitCleared) {
-        LOG_DEBUG(Logger::TAG_MC, "Starting raise with limit engaged - waiting for release before honouring stops");
+        int rawValue = digitalRead(LIMIT_SWITCH_PIN);
+        LOG_WARN(Logger::TAG_MC, "⚠ RAISE: Starting with limit switch ALREADY ENGAGED");
+        LOG_WARN(Logger::TAG_MC, "   GPIO%d = %s | Will ignore limit until released and re-engaged",
+                 LIMIT_SWITCH_PIN, rawValue == LOW ? "LOW" : "HIGH");
+    } else {
+        LOG_INFO(Logger::TAG_MC, "✓ RAISE: Limit switch clear at start | Ready to detect end position");
     }
 
     // Start motor in forward direction (adjust speed as needed)
@@ -79,7 +90,12 @@ void MotorControl::lowerBridge() {
     m_operationStartTime = millis(); 
 
     if (!m_limitCleared) {
-        LOG_DEBUG(Logger::TAG_MC, "Starting lower with limit engaged - waiting for release before honouring stops");
+        int rawValue = digitalRead(LIMIT_SWITCH_PIN);
+        LOG_WARN(Logger::TAG_MC, "⚠ LOWER: Starting with limit switch ALREADY ENGAGED");
+        LOG_WARN(Logger::TAG_MC, "   GPIO%d = %s | Will ignore limit until released and re-engaged",
+                 LIMIT_SWITCH_PIN, rawValue == LOW ? "LOW" : "HIGH");
+    } else {
+        LOG_INFO(Logger::TAG_MC, "✓ LOWER: Limit switch clear at start | Ready to detect end position");
     }
 
     // Start motor in reverse direction (adjust speed as needed)
@@ -119,13 +135,18 @@ void MotorControl::checkProgress() {
     if (!limitActive) {
         if (!m_limitCleared) {
             m_limitCleared = true;
-            LOG_DEBUG(Logger::TAG_MC, "Shared limit switch released - arming grace window");
+            int rawValue = digitalRead(LIMIT_SWITCH_PIN);
+            const char* direction = m_raisingBridge ? "RAISING" : "LOWERING";
+            LOG_INFO(Logger::TAG_MC, "━━━ LIMIT SWITCH RELEASED ━━━");
+            LOG_INFO(Logger::TAG_MC, "Direction: %s | GPIO%d = %s | State: INACTIVE (released)",
+                     direction, LIMIT_SWITCH_PIN, rawValue == LOW ? "LOW" : "HIGH");
+            LOG_INFO(Logger::TAG_MC, "Bridge has left the end-stop position");
         }
 
         if (!m_inGracePeriod) {
             m_inGracePeriod = true;
             m_graceEndsAt = now + LIMIT_RELEASE_GRACE_MS;
-            LOG_DEBUG(Logger::TAG_MC, "Ignoring limit switch re-triggers for %lu ms",
+            LOG_INFO(Logger::TAG_MC, "⏱ Grace period ARMED: Ignoring re-triggers for %lu ms (prevents switch chatter)",
                       LIMIT_RELEASE_GRACE_MS);
         }
 
@@ -144,14 +165,26 @@ void MotorControl::checkProgress() {
 
     m_inGracePeriod = false;
 
+    int rawValue = digitalRead(LIMIT_SWITCH_PIN);
+    const char* direction = m_raisingBridge ? "RAISING" : "LOWERING";
+    const char* position = m_raisingBridge ? "RAISED (open)" : "LOWERED (closed)";
+    
+    LOG_INFO(Logger::TAG_MC, "═══════════════════════════════════════════");
+    LOG_INFO(Logger::TAG_MC, "🛑 LIMIT SWITCH ACTIVATED - END POSITION REACHED");
+    LOG_INFO(Logger::TAG_MC, "═══════════════════════════════════════════");
+    LOG_INFO(Logger::TAG_MC, "Direction: %s | Final position: %s", direction, position);
+    LOG_INFO(Logger::TAG_MC, "GPIO%d = %s | State: ACTIVE (pressed)", 
+             LIMIT_SWITCH_PIN, rawValue == LOW ? "LOW" : "HIGH");
+    LOG_INFO(Logger::TAG_MC, "Action: STOPPING motor and publishing success event");
+
     stopMotor();
-    LOG_INFO(Logger::TAG_MC, "Limit switch re-engaged - stopping motor");
 
     BridgeEvent eventType = m_raisingBridge ? BridgeEvent::BRIDGE_OPENED_SUCCESS
                                             : BridgeEvent::BRIDGE_CLOSED_SUCCESS;
     auto* eventData = new SimpleEventData(eventType);
     m_eventBus.publish(eventType, eventData);
-    LOG_DEBUG(Logger::TAG_MC, "Success event published due to limit switch");
+    LOG_INFO(Logger::TAG_MC, "✓ Event published: %s", 
+             m_raisingBridge ? "BRIDGE_OPENED_SUCCESS" : "BRIDGE_CLOSED_SUCCESS");
 }
 
 void MotorControl::halt() {
@@ -186,7 +219,9 @@ void MotorControl::simulateLimitSwitchPress() {
         return;
     }
     
-    LOG_INFO(Logger::TAG_MC, "Simulating limit switch press (normal stop)");
+    const char* direction = m_raisingBridge ? "RAISING" : "LOWERING";
+    LOG_INFO(Logger::TAG_MC, "🧪 SIMULATION: Triggering virtual limit switch press");
+    LOG_INFO(Logger::TAG_MC, "   Direction: %s | Next checkProgress() will detect limit activation", direction);
     m_simulatedLimitPressed = true;
     
     // Let checkProgress() handle the rest naturally on next iteration

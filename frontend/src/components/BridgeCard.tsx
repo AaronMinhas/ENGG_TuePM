@@ -36,7 +36,7 @@ function BoatTrafficLight({ red, green }: { red: boolean; green: boolean }) {
 
 // Boat timer countdown component
 function BoatTimerDisplay({ timerStartMs, side }: { timerStartMs: number; side: string }) {
-  const [remainingSeconds, setRemainingSeconds] = useState<number>(45);
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(10);
   const timerStartTimeRef = useRef<number | null>(null);
   const lastTimerStartMsRef = useRef<number>(0);
   
@@ -46,14 +46,14 @@ function BoatTimerDisplay({ timerStartMs, side }: { timerStartMs: number; side: 
     if (timerStartMs > 0 && timerStartMs !== lastTimerStartMsRef.current) {
       timerStartTimeRef.current = Date.now();
       lastTimerStartMsRef.current = timerStartMs;
-      setRemainingSeconds(45);
+      setRemainingSeconds(10);
     }
     
     // Reset if timer stopped
     if (timerStartMs === 0) {
       timerStartTimeRef.current = null;
       lastTimerStartMsRef.current = 0;
-      setRemainingSeconds(45);
+      setRemainingSeconds(10);
       return;
     }
     
@@ -63,7 +63,7 @@ function BoatTimerDisplay({ timerStartMs, side }: { timerStartMs: number; side: 
       // Calculate elapsed time from when frontend received timer start
       const now = Date.now();
       const elapsed = (now - timerStartTimeRef.current) / 1000;
-      const remaining = Math.max(0, 45 - elapsed);
+      const remaining = Math.max(0, 10 - elapsed);
       setRemainingSeconds(Math.ceil(remaining));
     };
     

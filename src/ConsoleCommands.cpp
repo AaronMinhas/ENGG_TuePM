@@ -157,13 +157,19 @@ bool ConsoleCommands::handleCommand(const String& cmd) {
   if (cmd == "limit") {
     const int raw = motor_.getLimitSwitchRaw();
     const bool active = motor_.isLimitSwitchActive();
-    LOG_INFO(Logger::TAG_MC, "LIMIT SWITCH (shared): raw=%d, active=%s", raw, active ? "YES" : "NO");
+    LOG_INFO(Logger::TAG_MC, "═══ LIMIT SWITCH STATUS (GPIO13) ═══");
+    LOG_INFO(Logger::TAG_MC, "Raw value: %s (%d) | Logical state: %s", 
+             raw == LOW ? "LOW" : "HIGH", raw, active ? "ACTIVE (pressed)" : "INACTIVE (released)");
+    LOG_INFO(Logger::TAG_MC, "Simulation mode: %s", motor_.isSimulationMode() ? "ENABLED" : "DISABLED");
     return true;
   }
   if (cmd == "lsw") {
     const bool enable = (limitStreamEnabled_ == false);
     limitStreamEnabled_ = enable;
-    LOG_INFO(Logger::TAG_MC, "LIMIT SWITCH STREAM: %s", enable ? "enabled" : "disabled");
+    LOG_INFO(Logger::TAG_MC, "⏱ LIMIT SWITCH CONTINUOUS MONITORING: %s", enable ? "ENABLED" : "DISABLED");
+    if (enable) {
+      LOG_INFO(Logger::TAG_MC, "   Real-time limit switch state will be logged in loop()");
+    }
     return true;
   }
   
@@ -345,6 +351,8 @@ void ConsoleCommands::handleStreaming()
   {
     const int raw = motor_.getLimitSwitchRaw();
     const bool active = motor_.isLimitSwitchActive();
-    LOG_DEBUG(Logger::TAG_MC, "LIMIT SWITCH: raw=%d active=%s", raw, active ? "YES" : "NO");
+    LOG_DEBUG(Logger::TAG_MC, "LIMIT SWITCH [GPIO13]: %s (%d) | State: %s", 
+              raw == LOW ? "LOW" : "HIGH", raw, 
+              active ? "ACTIVE (pressed)" : "INACTIVE (released)");
   }
 }

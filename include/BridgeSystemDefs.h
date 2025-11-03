@@ -1,13 +1,13 @@
 #pragma once
 #include <Arduino.h>
 
-// Boat Traffic Queue Timing Constants
-#define BOAT_GREEN_PERIOD_MS 45000      // 45 seconds - boats can pass during this time
+// Boat Traffic Timing Constants
 #define BOAT_PASSAGE_TIMEOUT_MS 120000  // 2 minutes - emergency timeout if no boat passes
-#define BOAT_CYCLE_COOLDOWN_MS 45000    // 45 seconds - buffer before starting a new bridge cycle
+#define BOAT_CLEARANCE_DELAY_MS 10000   // 10 seconds - delay after beam break clears before closing bridge
+#define BOAT_GREEN_PERIOD_MS 10000      // Legacy constant (unused in single-boat mode)
 
 // Pedestrian Crossing Timing Constants
-#define PEDESTRIAN_CROSSING_TIME_MS 12000  // 12 seconds - time for pedestrians to finish crossing before bridge opens
+#define PEDESTRIAN_CROSSING_TIME_MS 16000  // 16 seconds - time for pedestrians to finish crossing before bridge opens
 
 // System States
 enum class BridgeState {

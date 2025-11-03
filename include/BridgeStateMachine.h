@@ -4,7 +4,9 @@
 #include "CommandBus.h"
 #include "EventBus.h"
 #include <Arduino.h>
-#include <deque>
+
+// Forward declaration
+class DetectionSystem;
 
 class BridgeStateMachine {
 public:
@@ -15,22 +17,27 @@ public:
     BridgeState getCurrentState() const;
     String getStateString() const;
     
+    // Set reference to detection system for sensor control
+    void setDetectionSystem(DetectionSystem* detectionSystem);
+    
     static const char* stateName(BridgeState s);
 
 private:
-    // Boat passage tracking (tracks left and right boats)
+    // Boat passage tracking (single boat at a time - no queue)
     enum class BoatSide { UNKNOWN, LEFT, RIGHT };
-    BoatSide activeBoatSide_ = BoatSide::UNKNOWN;  // Side that first detected the boat
+    BoatSide activeBoatSide_ = BoatSide::UNKNOWN;  // Side that detected the boat
     BoatSide lastEventSide_ = BoatSide::UNKNOWN;   // Side parsed from the most recent boat event
     bool boatCycleActive_ = false;                 // Set to True from first detection until traffic resumes
     
-    // Emergency timeout tracking
-    unsigned long openingStateEntryTime_ = 0;      // When bridge entered OPENING state
+    // Timing tracking
+    unsigned long openingStateEntryTime_ = 0;      // When bridge entered OPEN state
+    unsigned long boatClearanceTime_ = 0;          // When boat cleared (beam break) - for delay before closing
+    bool waitingToClearBeforeClose_ = false;       // Waiting for clearance delay before closing
+    bool oppositeSideDetectedDuringClearance_ = false;  // Track if opposite ultrasonic detected during clearance period
 
     static const char* sideName(BoatSide s) {
         switch (s) { case BoatSide::LEFT: return "left"; case BoatSide::RIGHT: return "right"; default: return "unknown"; }
     }
-    static BoatSide otherSide(BoatSide s) { return s == BoatSide::LEFT ? BoatSide::RIGHT : (s == BoatSide::RIGHT ? BoatSide::LEFT : BoatSide::UNKNOWN); }
 
     void changeState(BridgeState newState);
     void issueCommand(CommandTarget target, CommandAction action);
@@ -39,35 +46,22 @@ private:
     
     void onEventReceived(EventData* eventData);
     void handleBoatDetection(BoatSide side);
-    bool hasPendingBoatRequests() const { return !boatQueue_.empty(); }
-    bool canStartNewCycle() const;
-    bool cooldownElapsed() const;
-    bool maybeStartPendingCycle();
-    void startCooldown();
-    void resetCooldown();
-    void beginCycleForSide(BoatSide side);
-    void startActiveBoatWindow(BoatSide side);
-    void endActiveBoatWindow(const char* reason);
+    void beginBridgeCycle(BoatSide side);
+    void completeBridgeCycle();
     static String boatSideToString(BoatSide side);
 
     EventBus& m_eventBus;
     CommandBus& m_commandBus;
+    DetectionSystem* m_detectionSystem = nullptr;
     BridgeState m_currentState;
     BridgeState m_previousState;
     unsigned long m_stateEntryTime;
-    std::deque<BoatSide> boatQueue_;
-    bool greenWindowActive_ = false;
-    bool cooldownActive_ = false;
-    unsigned long cooldownStartTime_ = 0;
-    uint8_t sidesServedThisOpening_ = 0;
-    bool boatPassedInWindow_ = false;
-    static constexpr uint8_t MAX_SIDES_PER_OPEN = 2;
     bool beamBreakActive_ = false;
 
     enum class PendingLowerRequest { NONE, AUTO, MANUAL };
     PendingLowerRequest pendingLowerRequest_ = PendingLowerRequest::NONE;
 
-    void resetBoatCycleState(bool clearQueue);
+    void resetBoatCycleState();
     void performSystemReset();
     bool issueLowerBridgeAuto();
     bool issueLowerBridgeManual();

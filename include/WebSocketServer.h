@@ -71,5 +71,5 @@ private:
     void startServer();
     
     unsigned long lastSensorBroadcastMs_ = 0;
-    static constexpr unsigned long SENSOR_BROADCAST_INTERVAL_MS = 200; // 5 Hz updates
+    static constexpr unsigned long SENSOR_BROADCAST_INTERVAL_MS = 1000; // 1 Hz updates (1 per second)
 };

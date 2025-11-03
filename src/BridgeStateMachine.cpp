@@ -1,49 +1,14 @@
 #include "BridgeStateMachine.h"
+#include "DetectionSystem.h"
 #include <Arduino.h>
 #include "Logger.h"
 
 /*
- * TLDR:
- * there is a lot more to do.... basically nothing is implemented apart from foundational logic but here's a list of things i can think of which have been done and need to be done:
- * 
- * implemented :)
- *  [x] Core state machine logic with proper event-driven transitions
- *  [x] EventBus integration for receiving success events from subsystems
- *  [x] CommandBus integration for issuing commands to subsystems
- *  [x] Basic fault detection and manual override handling
- *  * COMMUNICATION PROTOCOLS
- *  [x] WebSocket server integration not connected to state machine
- *  [x] StateWriter doesn't even exist.
- *  [x] No status broadcasting to monitoring systems
- * 
- * Missing :(
- * SAFETY MANAGER INTEGRATION
- *  [] No SafetyManager subsystem implemented yet
- *  [] ENTER_SAFE_STATE command has no target to handle it
- *  [] Safety timeouts and watchdog functionality missing
- * 
- * MULTIPLE BOAT DETECTION HANDLING
- *  [] Currently ignores BOAT_DETECTED if already in progress
- *  [] No queuing system for multiple boats
- *  [] No priority handling for emergency vessels (definitely out of scope but would be cool)
- *  [] Can cause system to miss boats or create unsafe conditions
- * 
- * ERROR HANDLING & RECOVERY
- *  [] No timeout handling for waiting states (what if a success event never comes?)
- *  [] No retry logic for failed commands
- *  [] No graceful degradation or failsafe mechanisms
- *  [] Missing error event types (COMMAND_FAILED, TIMEOUT_OCCURRED, etc.)
- * 
- * STATE PERSISTENCE & RECOVERY
- *  [] No state persistence across system resets (do we even care?)
- *  [] No recovery mechanism if system crashes mid-operation
- *  [] No state validation on startup (we definitely care about this)
- * 
- * SUBSYSTEM LOGIC (doesn't affect the statemachine logic but i'll list it here anyway)
- *  [] SignalControl subsystem not implemented (no TRAFFIC_STOPPED/RESUMED_SUCCESS events)
- *  [] DetectionSystem subsystem 
- *  [] Missing subsystem command handlers in Controller
- * 
+ * SIMPLIFIED BOAT DETECTION SYSTEM:
+ * - One boat served at a time (no queue)
+ * - Opposite ultrasonic sensor disabled during boat cycle
+ * - Simple flow: IDLE -> detect boat -> stop traffic -> open bridge -> boat passes -> close -> resume traffic -> IDLE
+ * - Sensors re-enabled when traffic resumes and cycle completes
  */
 
 BridgeStateMachine::BridgeStateMachine(EventBus& eventBus, CommandBus& commandBus)
@@ -60,6 +25,11 @@ void BridgeStateMachine::begin() {
     LOG_INFO(Logger::TAG_FSM, "Initialised and subscribed to EventBus");
 }
 
+void BridgeStateMachine::setDetectionSystem(DetectionSystem* detectionSystem) {
+    m_detectionSystem = detectionSystem;
+    LOG_INFO(Logger::TAG_FSM, "DetectionSystem reference set");
+}
+
 void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
     // Only log important state transitions, not every event
     
@@ -72,7 +42,7 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
 
     if (event == BridgeEvent::FAULT_DETECTED || event == BridgeEvent::BOAT_PASSAGE_TIMEOUT) {
         if (m_currentState != BridgeState::FAULT) {
-            resetBoatCycleState(true);
+            resetBoatCycleState();
             if (event == BridgeEvent::BOAT_PASSAGE_TIMEOUT) {
                 LOG_ERROR(Logger::TAG_FSM, "BOAT_PASSAGE_TIMEOUT - boat didn't pass within timeout → FAULT state");
             } else {
@@ -105,6 +75,14 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
 
     // Boat detection handling is global so requests can be queued during any state
     if (event == BridgeEvent::BOAT_DETECTED_LEFT || event == BridgeEvent::BOAT_DETECTED_RIGHT) {
+        // Check if we're waiting for opposite side detection during clearance period
+        if (waitingToClearBeforeClose_ && activeBoatSide_ != BoatSide::UNKNOWN) {
+            BoatSide oppositeSide = (activeBoatSide_ == BoatSide::LEFT) ? BoatSide::RIGHT : BoatSide::LEFT;
+            if (lastEventSide_ == oppositeSide) {
+                oppositeSideDetectedDuringClearance_ = true;
+                LOG_INFO(Logger::TAG_FSM, "Opposite side (%s) detected boat during clearance period - bridge will close after delay", sideName(oppositeSide));
+            }
+        }
         handleBoatDetection(lastEventSide_);
         return;
     }
@@ -157,19 +135,15 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
                 // Record entry time for emergency timeout
                 openingStateEntryTime_ = millis();
                 
-                if (activeBoatSide_ == BoatSide::UNKNOWN) {
-                    if (hasPendingBoatRequests()) {
-                        // Edge case: active side lost but queue still populated
-                        BoatSide recovered = boatQueue_.front();
-                        boatQueue_.pop_front();
-                        activeBoatSide_ = recovered;
-                    } else {
-                        LOG_WARN(Logger::TAG_FSM, "Bridge opened but no active boat side - keeping lights red");
-                    }
-                }
-
+                // Set boat lights green for the active side
                 if (activeBoatSide_ != BoatSide::UNKNOWN) {
-                    startActiveBoatWindow(activeBoatSide_);
+                    String sideStr = boatSideToString(activeBoatSide_);
+                    if (activeBoatSide_ == BoatSide::LEFT) {
+                        issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "green");
+                    } else {
+                        issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "green");
+                    }
+                    LOG_INFO(Logger::TAG_FSM, "Boat light set to GREEN for side=%s", sideName(activeBoatSide_));
                 }
                 
                 // Now wait for BOAT_PASSED (beam break detects when boat clears)
@@ -180,17 +154,33 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
             break;
 
         case BridgeState::OPEN:
-            // OPEN state waits for boat to pass (and handles green period expiration)
-            if (event == BridgeEvent::BOAT_GREEN_PERIOD_EXPIRED) {
-                endActiveBoatWindow("timer expired");
-            } else if (event == BridgeEvent::BOAT_PASSED || 
-                       event == BridgeEvent::BOAT_PASSED_LEFT || 
-                       event == BridgeEvent::BOAT_PASSED_RIGHT) {
-                // Beam break sensor detects passage - no side validation needed
-                boatPassedInWindow_ = true;
+            // OPEN state waits for boat to pass
+            if (event == BridgeEvent::BOAT_PASSED || 
+                event == BridgeEvent::BOAT_PASSED_LEFT || 
+                event == BridgeEvent::BOAT_PASSED_RIGHT) {
+                // Beam break sensor detects passage
                 LOG_INFO(Logger::TAG_FSM, "BOAT_PASSED detected via beam break - boat has cleared the channel");
+                
+                // Turn off boat lights
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "red");
+                issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "red");
+                
+                // Re-enable opposite sensor to detect boat on the other side
+                if (m_detectionSystem != nullptr && activeBoatSide_ != BoatSide::UNKNOWN) {
+                    DetectionSystem::BoatDirection direction = (activeBoatSide_ == BoatSide::LEFT) 
+                        ? DetectionSystem::BoatDirection::LEFT_TO_RIGHT 
+                        : DetectionSystem::BoatDirection::RIGHT_TO_LEFT;
+                    m_detectionSystem->enableOppositeSensor(direction);
+                    m_detectionSystem->resetBoatDetectionState();  // Allow opposite sensor to trigger new detection
+                }
+                
+                // Start clearance delay timer before closing bridge
+                boatClearanceTime_ = millis();
+                waitingToClearBeforeClose_ = true;
+                oppositeSideDetectedDuringClearance_ = false;  // Reset opposite side detection tracking
+                LOG_INFO(Logger::TAG_FSM, "Starting 10-second clearance delay - monitoring opposite side for boat detection");
             } else {
-                LOG_DEBUG(Logger::TAG_FSM, "OPEN state ignoring non-relevant event - still waiting for boat events");
+                LOG_DEBUG(Logger::TAG_FSM, "OPEN state ignoring non-relevant event - still waiting for BOAT_PASSED");
             }
             break;
 
@@ -210,20 +200,10 @@ void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
         case BridgeState::RESUMING_TRAFFIC:
             // RESUMING_TRAFFIC state waits for traffic to be confirmed resumed
             if (event == BridgeEvent::TRAFFIC_RESUMED_SUCCESS) {
-                startCooldown();
                 LOG_INFO(Logger::TAG_FSM, "TRAFFIC_RESUMED_SUCCESS received - returning to IDLE");
+                completeBridgeCycle();
                 changeState(BridgeState::IDLE);
-                // No entry action - back to idle, ready for next boat
                 LOG_INFO(Logger::TAG_FSM, "Bridge operation complete - ready for next boat");
-                // Reset boat cycle tracking (allow for new detections)
-                activeBoatSide_ = BoatSide::UNKNOWN;
-                boatCycleActive_ = false;
-                greenWindowActive_ = false;
-                sidesServedThisOpening_ = 0;
-                if (hasPendingBoatRequests()) {
-                    LOG_INFO(Logger::TAG_FSM, "Pending boat requests in queue (%u) - waiting for cooldown before next cycle",
-                             static_cast<unsigned int>(boatQueue_.size()));
-                }
             } else {
                 LOG_DEBUG(Logger::TAG_FSM, "RESUMING_TRAFFIC state ignoring non-success event - still waiting for TRAFFIC_RESUMED_SUCCESS");
             }
@@ -320,163 +300,51 @@ void BridgeStateMachine::handleBoatDetection(BoatSide side) {
         return;
     }
 
-    // Ignore duplicate detections for the side currently holding the green window
-    if (boatCycleActive_ && greenWindowActive_ && side == activeBoatSide_) {
-        LOG_DEBUG(Logger::TAG_FSM, "Boat detected on active side=%s while window is green - already being served",
-                  sideName(side));
+    // Ignore if a boat cycle is already active
+    if (boatCycleActive_) {
+        LOG_INFO(Logger::TAG_FSM, "Boat detected on side=%s but cycle already active - ignoring (opposite sensor will be disabled)",
+                 sideName(side));
         return;
     }
 
-    boatQueue_.push_back(side);
-    LOG_INFO(Logger::TAG_FSM, "Queued boat request for side=%s (queue length=%u)",
-             sideName(side), static_cast<unsigned int>(boatQueue_.size()));
-
-    if (maybeStartPendingCycle()) {
-        return;
-    }
-
-    if (boatCycleActive_) {
-        LOG_INFO(Logger::TAG_FSM, "Boat cycle already active - request will be served in FIFO order when current cycle completes");
-    } else if (!canStartNewCycle()) {
-        unsigned long remaining = BOAT_CYCLE_COOLDOWN_MS;
-        if (cooldownActive_) {
-            unsigned long elapsed = millis() - cooldownStartTime_;
-            if (elapsed < BOAT_CYCLE_COOLDOWN_MS) {
-                remaining = BOAT_CYCLE_COOLDOWN_MS - elapsed;
-            } else {
-                remaining = 0;
-            }
-        }
-        LOG_INFO(Logger::TAG_FSM, "Bridge cooldown active (%lums remaining) - boat request queued until bridge ready",
-                 remaining);
-    } else if (m_currentState != BridgeState::IDLE) {
-        LOG_INFO(Logger::TAG_FSM, "Bridge state %s not ready to begin cycle yet - boat request queued",
-                 stateName(m_currentState));
-    }
-}
-
-bool BridgeStateMachine::maybeStartPendingCycle() {
-    if (boatQueue_.empty()) {
-        return false;
-    }
-    if (boatCycleActive_) {
-        return false;
-    }
-    if (!canStartNewCycle()) {
-        return false;
-    }
+    // Only start cycle if in IDLE state
     if (m_currentState != BridgeState::IDLE) {
-        return false;
+        LOG_INFO(Logger::TAG_FSM, "Boat detected on side=%s but bridge not in IDLE state (%s) - ignoring",
+                 sideName(side), stateName(m_currentState));
+        return;
     }
 
-    BoatSide nextSide = boatQueue_.front();
-    boatQueue_.pop_front();
-    beginCycleForSide(nextSide);
-    return true;
+    // Start bridge cycle for this boat
+    beginBridgeCycle(side);
 }
 
-void BridgeStateMachine::beginCycleForSide(BoatSide side) {
+void BridgeStateMachine::beginBridgeCycle(BoatSide side) {
     boatCycleActive_ = true;
     activeBoatSide_ = side;
-    sidesServedThisOpening_ = 0;
-    greenWindowActive_ = false;
-    boatPassedInWindow_ = false;
-    resetCooldown();
 
-    LOG_INFO(Logger::TAG_FSM, "Starting boat cycle for side=%s - transitioning to STOPPING_TRAFFIC", sideName(side));
+    LOG_INFO(Logger::TAG_FSM, "Starting bridge cycle for boat from side=%s - transitioning to STOPPING_TRAFFIC", sideName(side));
     changeState(BridgeState::STOPPING_TRAFFIC);
     issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
     LOG_INFO(Logger::TAG_FSM, "Now waiting for TRAFFIC_STOPPED_SUCCESS...");
 }
 
-void BridgeStateMachine::startActiveBoatWindow(BoatSide side) {
-    if (side == BoatSide::UNKNOWN) {
-        LOG_WARN(Logger::TAG_FSM, "Cannot start boat window - side unknown");
-        return;
+void BridgeStateMachine::completeBridgeCycle() {
+    // Re-enable all sensors for next detection
+    if (m_detectionSystem != nullptr) {
+        m_detectionSystem->enableAllSensors();
     }
-
-    String sideStr = boatSideToString(side);
-    greenWindowActive_ = true;
-    openingStateEntryTime_ = millis();
-    boatPassedInWindow_ = false;
-    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::START_BOAT_GREEN_PERIOD, sideStr);
-
-    LOG_INFO(Logger::TAG_FSM, "Started boat queue window: %s=GREEN, %s=RED (45s timer)",
-             sideName(side), sideName(otherSide(side)));
-}
-
-void BridgeStateMachine::endActiveBoatWindow(const char* reason) {
-    if (!greenWindowActive_) {
-        LOG_DEBUG(Logger::TAG_FSM, "endActiveBoatWindow(%s) called but no active window", reason);
-        return;
-    }
-
-    BoatSide finishingSide = activeBoatSide_;
-
-    if (!boatPassedInWindow_) {
-        LOG_ERROR(Logger::TAG_FSM, "Boat window expired without BOAT_PASSED confirmation (%s) - triggering fault",
-                  sideName(finishingSide));
-        auto* timeoutData = new SimpleEventData(BridgeEvent::BOAT_PASSAGE_TIMEOUT);
-        m_eventBus.publish(BridgeEvent::BOAT_PASSAGE_TIMEOUT, timeoutData, EventPriority::EMERGENCY);
-        return;
-    }
-
-    LOG_INFO(Logger::TAG_FSM, "Boat window complete (%s) for side=%s", reason, sideName(finishingSide));
-
-    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::END_BOAT_GREEN_PERIOD);
-    greenWindowActive_ = false;
-    openingStateEntryTime_ = 0;
-
-    sidesServedThisOpening_++;
+    
+    // Reset boat cycle tracking
     activeBoatSide_ = BoatSide::UNKNOWN;
-    boatPassedInWindow_ = false;
-
-    if (!boatQueue_.empty() && sidesServedThisOpening_ < MAX_SIDES_PER_OPEN) {
-        BoatSide nextSide = boatQueue_.front();
-        boatQueue_.pop_front();
-        activeBoatSide_ = nextSide;
-        LOG_INFO(Logger::TAG_FSM, "Switching bridge access to queued side=%s without lowering span", sideName(nextSide));
-        startActiveBoatWindow(nextSide);
-        return;
-    }
-
-    if (!boatQueue_.empty()) {
-        LOG_INFO(Logger::TAG_FSM, "Additional boat requests pending but closing bridge after %u sides served this opening",
-                 static_cast<unsigned int>(sidesServedThisOpening_));
-    }
-
-    LOG_INFO(Logger::TAG_FSM, "All scheduled boats served - requesting bridge lower");
-    issueLowerBridgeAuto();
+    boatCycleActive_ = false;
+    openingStateEntryTime_ = 0;
+    boatClearanceTime_ = 0;
+    waitingToClearBeforeClose_ = false;
+    oppositeSideDetectedDuringClearance_ = false;
+    
+    LOG_INFO(Logger::TAG_FSM, "Bridge cycle complete - sensors re-enabled and ready for next boat");
 }
 
-bool BridgeStateMachine::canStartNewCycle() const {
-    if (!cooldownActive_) {
-        return true;
-    }
-    return cooldownElapsed();
-}
-
-bool BridgeStateMachine::cooldownElapsed() const {
-    if (!cooldownActive_) {
-        return true;
-    }
-    unsigned long elapsed = millis() - cooldownStartTime_;
-    return elapsed >= BOAT_CYCLE_COOLDOWN_MS;
-}
-
-void BridgeStateMachine::startCooldown() {
-    cooldownActive_ = true;
-    cooldownStartTime_ = millis();
-    LOG_INFO(Logger::TAG_FSM, "Bridge cooldown started (45s buffer before next cycle)");
-}
-
-void BridgeStateMachine::resetCooldown() {
-    if (cooldownActive_) {
-        LOG_DEBUG(Logger::TAG_FSM, "Cooldown reset - bridge ready for next cycle");
-    }
-    cooldownActive_ = false;
-    cooldownStartTime_ = 0;
-}
 
 String BridgeStateMachine::boatSideToString(BoatSide side) {
     switch (side) {
@@ -541,30 +409,30 @@ void BridgeStateMachine::processPendingLowerRequest() {
     }
 }
 
-void BridgeStateMachine::resetBoatCycleState(bool clearQueue) {
-    if (greenWindowActive_) {
-        issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::END_BOAT_GREEN_PERIOD);
-    }
+void BridgeStateMachine::resetBoatCycleState() {
+    // Reset all boat cycle state
     activeBoatSide_ = BoatSide::UNKNOWN;
     lastEventSide_ = BoatSide::UNKNOWN;
     boatCycleActive_ = false;
-    greenWindowActive_ = false;
-    boatPassedInWindow_ = false;
-    sidesServedThisOpening_ = 0;
     openingStateEntryTime_ = 0;
+    boatClearanceTime_ = 0;
+    waitingToClearBeforeClose_ = false;
+    oppositeSideDetectedDuringClearance_ = false;
     pendingLowerRequest_ = PendingLowerRequest::NONE;
     beamBreakActive_ = false;
-    if (clearQueue) {
-        boatQueue_.clear();
+    
+    // Re-enable all sensors
+    if (m_detectionSystem != nullptr) {
+        m_detectionSystem->enableAllSensors();
     }
-    cooldownActive_ = false;
-    cooldownStartTime_ = 0;
+    
+    LOG_INFO(Logger::TAG_FSM, "Boat cycle state reset - sensors re-enabled");
 }
 
 void BridgeStateMachine::performSystemReset() {
     LOG_WARN(Logger::TAG_FSM, "SYSTEM_RESET_REQUESTED - forcing system back to IDLE");
 
-    resetBoatCycleState(true);
+    resetBoatCycleState();
 
     if (m_currentState != BridgeState::IDLE) {
         changeState(BridgeState::IDLE);
@@ -587,10 +455,6 @@ void BridgeStateMachine::changeState(BridgeState newState) {
     // Publish state change event for monitoring systems
     auto* stateChangeData = new StateChangeData(m_currentState, m_previousState);
     m_eventBus.publish(BridgeEvent::STATE_CHANGED, stateChangeData);
-
-    if (m_currentState == BridgeState::IDLE && !boatCycleActive_) {
-        maybeStartPendingCycle();
-    }
 }
 
 void BridgeStateMachine::issueCommand(CommandTarget target, CommandAction action) {
@@ -703,24 +567,47 @@ void BridgeStateMachine::subscribeToEvents() {
 }
 
 void BridgeStateMachine::checkTimeouts() {
-    // Check for emergency timeout in OPENING state
-    if (m_currentState == BridgeState::OPENING && openingStateEntryTime_ > 0) {
+    // Check for emergency timeout in OPEN state
+    if (m_currentState == BridgeState::OPEN && openingStateEntryTime_ > 0) {
         unsigned long elapsed = millis() - openingStateEntryTime_;
         
         if (elapsed >= BOAT_PASSAGE_TIMEOUT_MS) {
-            LOG_ERROR(Logger::TAG_FSM, "Emergency timeout in OPENING state (%lu ms) - boat didn't pass", elapsed);
+            LOG_ERROR(Logger::TAG_FSM, "Emergency timeout in OPEN state (%lu ms) - boat didn't pass", elapsed);
             
             // Publish timeout event (will trigger FAULT via global handler)
             auto* timeoutData = new SimpleEventData(BridgeEvent::BOAT_PASSAGE_TIMEOUT);
             m_eventBus.publish(BridgeEvent::BOAT_PASSAGE_TIMEOUT, timeoutData, EventPriority::EMERGENCY);
         }
     }
-
-    if (cooldownActive_ && cooldownElapsed()) {
-        LOG_INFO(Logger::TAG_FSM, "Bridge cooldown elapsed - ready for next cycle");
-        resetCooldown();
-        if (m_currentState == BridgeState::IDLE) {
-            maybeStartPendingCycle();
+    
+    // Check for clearance delay completion before closing bridge
+    if (waitingToClearBeforeClose_ && boatClearanceTime_ > 0) {
+        unsigned long elapsed = millis() - boatClearanceTime_;
+        
+        if (elapsed >= BOAT_CLEARANCE_DELAY_MS) {
+            LOG_INFO(Logger::TAG_FSM, "Clearance delay complete (%lu ms)", elapsed);
+            
+            // Only close bridge if opposite side detected a boat during the clearance period
+            if (oppositeSideDetectedDuringClearance_) {
+                LOG_INFO(Logger::TAG_FSM, "Opposite side detected during clearance - proceeding to close bridge");
+                waitingToClearBeforeClose_ = false;
+                boatClearanceTime_ = 0;
+                oppositeSideDetectedDuringClearance_ = false;
+                
+                // Now attempt to lower bridge
+                issueLowerBridgeAuto();
+            } else {
+                LOG_ERROR(Logger::TAG_FSM, "Opposite side did NOT detect boat during %lu ms clearance period - entering FAULT state", elapsed);
+                
+                // Reset clearance tracking
+                waitingToClearBeforeClose_ = false;
+                boatClearanceTime_ = 0;
+                oppositeSideDetectedDuringClearance_ = false;
+                
+                // Trigger fault - boat passed beam break but never reached opposite sensor
+                auto* faultData = new SimpleEventData(BridgeEvent::FAULT_DETECTED);
+                m_eventBus.publish(BridgeEvent::FAULT_DETECTED, faultData, EventPriority::EMERGENCY);
+            }
         }
     }
 }

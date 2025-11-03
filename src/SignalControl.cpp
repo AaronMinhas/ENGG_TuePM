@@ -187,7 +187,7 @@ void SignalControl::update() {
     if (m_boatQueueActive) {
         unsigned long queueElapsed = millis() - m_boatQueueStartTime;
         if (queueElapsed >= BOAT_GREEN_PERIOD_MS) {
-            LOG_INFO(Logger::TAG_SC, "Boat green period expired (45s) - turning lights RED");
+            LOG_INFO(Logger::TAG_SC, "Boat green period expired (10s) - turning lights RED");
             endBoatGreenPeriod();
             
             // Publish event to notify state machine
@@ -216,8 +216,8 @@ void SignalControl::update() {
                 break;
                 
             case StopPhase::RED_CLEARANCE:
-                if (elapsed >= 12000) {  // 12 seconds total (6s yellow + 6s red)
-                    LOG_INFO(Logger::TAG_SC, "Traffic stopped successfully (12s pedestrian crossing time)");
+                if (elapsed >= 16000) {  // 16 seconds total (6s yellow + 10s red)
+                    LOG_INFO(Logger::TAG_SC, "Traffic stopped successfully (16s pedestrian crossing time)");
                     
                     // Reset pedestrian timer (crossing period complete)
                     m_pedestrianTimerStartTime = 0;
@@ -296,7 +296,7 @@ void SignalControl::setBoatLight(const String& side, const String& color) {
 
 void SignalControl::startBoatGreenPeriod(const String& side) {
     ensurePins();
-    LOG_INFO(Logger::TAG_SC, "Starting boat green period for %s side (45 seconds)", side.c_str());
+    LOG_INFO(Logger::TAG_SC, "Starting boat green period for %s side (10 seconds)", side.c_str());
     
     if (m_boatQueueActive) {
         LOG_INFO(Logger::TAG_SC, "Existing boat green period active on %s - restarting for %s",
@@ -328,7 +328,7 @@ void SignalControl::startBoatGreenPeriod(const String& side) {
     m_boatQueueStartTime = millis();
     m_boatQueueSide = side;
     
-    LOG_INFO(Logger::TAG_SC, "Boat queue timer started - boats can pass for 45 seconds");
+    LOG_INFO(Logger::TAG_SC, "Boat queue timer started - boats can pass for 10 seconds");
 }
 
 void SignalControl::endBoatGreenPeriod() {
