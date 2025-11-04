@@ -3,6 +3,7 @@
 #include "BridgeSystemDefs.h"
 #include "CommandBus.h"
 #include "EventBus.h"
+#include "PowerRecovery.h"
 #include <Arduino.h>
 
 // Forward declaration
@@ -19,6 +20,15 @@ public:
     
     // Set reference to detection system for sensor control
     void setDetectionSystem(DetectionSystem* detectionSystem);
+    
+    // Set reference to power recovery system
+    void setPowerRecovery(PowerRecovery* powerRecovery);
+    
+    // Recover from saved state after power failure
+    void recoverFromPowerFailure(const PowerRecovery::RecoveryData& recoveryData);
+    
+    // Get current recovery data for saving
+    PowerRecovery::RecoveryData getCurrentRecoveryData() const;
     
     static const char* stateName(BridgeState s);
 
@@ -53,6 +63,7 @@ private:
     EventBus& m_eventBus;
     CommandBus& m_commandBus;
     DetectionSystem* m_detectionSystem = nullptr;
+    PowerRecovery* m_powerRecovery = nullptr;
     BridgeState m_currentState;
     BridgeState m_previousState;
     unsigned long m_stateEntryTime;

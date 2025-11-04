@@ -1,5 +1,6 @@
 #include "BridgeStateMachine.h"
 #include "DetectionSystem.h"
+#include "PowerRecovery.h"
 #include <Arduino.h>
 #include "Logger.h"
 
@@ -28,6 +29,194 @@ void BridgeStateMachine::begin() {
 void BridgeStateMachine::setDetectionSystem(DetectionSystem* detectionSystem) {
     m_detectionSystem = detectionSystem;
     LOG_INFO(Logger::TAG_FSM, "DetectionSystem reference set");
+}
+
+void BridgeStateMachine::setPowerRecovery(PowerRecovery* powerRecovery) {
+    m_powerRecovery = powerRecovery;
+    LOG_INFO(Logger::TAG_FSM, "PowerRecovery reference set");
+}
+
+void BridgeStateMachine::recoverFromPowerFailure(const PowerRecovery::RecoveryData& recoveryData) {
+    BridgeState recoveredState = recoveryData.currentState;
+    LOG_WARN(Logger::TAG_FSM, "Recovering from power failure - State: %s", stateName(recoveredState));
+    
+    // Restore state variables (without triggering changeState which would save to NVS again)
+    m_previousState = recoveryData.previousState;
+    m_currentState = recoveredState;
+    m_stateEntryTime = millis();  // Reset entry time to current boot time
+    
+    // Restore boat cycle state if it was active
+    if (recoveryData.boatCycleActive) {
+        boatCycleActive_ = true;
+        if (recoveryData.activeBoatSide == 1) {
+            activeBoatSide_ = BoatSide::LEFT;
+        } else if (recoveryData.activeBoatSide == 2) {
+            activeBoatSide_ = BoatSide::RIGHT;
+        } else {
+            activeBoatSide_ = BoatSide::UNKNOWN;
+        }
+        LOG_INFO(Logger::TAG_FSM, "Restored boat cycle state - Active: %s", sideName(activeBoatSide_));
+    }
+    
+    // Restore extended timing state
+    openingStateEntryTime_ = recoveryData.openingStateEntryTime;
+    boatClearanceTime_ = recoveryData.boatClearanceTime;
+    waitingToClearBeforeClose_ = recoveryData.waitingToClearBeforeClose;
+    oppositeSideDetectedDuringClearance_ = recoveryData.oppositeSideDetectedDuringClearance;
+    beamBreakActive_ = recoveryData.beamBreakActive;
+    
+    // Restore pending lower request
+    if (recoveryData.pendingLowerRequest == 1) {
+        pendingLowerRequest_ = PendingLowerRequest::AUTO;
+    } else if (recoveryData.pendingLowerRequest == 2) {
+        pendingLowerRequest_ = PendingLowerRequest::MANUAL;
+    } else {
+        pendingLowerRequest_ = PendingLowerRequest::NONE;
+    }
+    
+    if (waitingToClearBeforeClose_) {
+        LOG_INFO(Logger::TAG_FSM, "Restored clearance delay timer");
+    }
+    if (beamBreakActive_) {
+        LOG_INFO(Logger::TAG_FSM, "Restored beam break ACTIVE state");
+    }
+    if (pendingLowerRequest_ != PendingLowerRequest::NONE) {
+        LOG_INFO(Logger::TAG_FSM, "Restored pending lower request");
+    }
+    
+    // Determine recovery action based on state
+    switch (recoveredState) {
+        case BridgeState::IDLE:
+            // Already in safe state
+            LOG_INFO(Logger::TAG_FSM, "Recovered to IDLE - system safe");
+            break;
+            
+        case BridgeState::STOPPING_TRAFFIC:
+            // Resume stopping traffic - reissue command
+            LOG_INFO(Logger::TAG_FSM, "Resuming STOPPING_TRAFFIC - reissuing STOP_TRAFFIC command");
+            issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::STOP_TRAFFIC);
+            break;
+            
+        case BridgeState::OPENING:
+            // Resume opening bridge - reissue command
+            LOG_INFO(Logger::TAG_FSM, "Resuming OPENING - reissuing RAISE_BRIDGE command");
+            issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::RAISE_BRIDGE);
+            break;
+            
+        case BridgeState::OPEN:
+            // Bridge was open - restore lights and timing
+            LOG_INFO(Logger::TAG_FSM, "Resuming OPEN state - waiting for boat to pass");
+            
+            // If openingStateEntryTime was not saved (old recovery data), reset it
+            if (openingStateEntryTime_ == 0) {
+                openingStateEntryTime_ = millis();
+                LOG_WARN(Logger::TAG_FSM, "Opening time not saved - resetting timeout timer");
+            } else {
+                // Adjust timestamp to current boot time (openingStateEntryTime_ is from previous boot)
+                // This means timeout may expire faster, but prevents boats from getting infinite time
+                unsigned long elapsedInPreviousBoot = recoveryData.stateEntryTime - openingStateEntryTime_;
+                openingStateEntryTime_ = millis() - elapsedInPreviousBoot;
+                LOG_INFO(Logger::TAG_FSM, "Restored timeout timer with %lu ms already elapsed", elapsedInPreviousBoot);
+            }
+            
+            // Restore boat lights for active side
+            if (activeBoatSide_ != BoatSide::UNKNOWN) {
+                if (activeBoatSide_ == BoatSide::LEFT) {
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_LEFT, "green");
+                } else {
+                    issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::SET_BOAT_LIGHT_RIGHT, "green");
+                }
+                LOG_INFO(Logger::TAG_FSM, "Boat light set to GREEN for side=%s", sideName(activeBoatSide_));
+            }
+            
+            // If we were waiting for clearance before close, adjust the timer
+            if (waitingToClearBeforeClose_ && boatClearanceTime_ > 0) {
+                // Adjust clearance timer relative to current boot time
+                unsigned long elapsedClearance = recoveryData.stateEntryTime - boatClearanceTime_;
+                boatClearanceTime_ = millis() - elapsedClearance;
+                LOG_INFO(Logger::TAG_FSM, "Restored clearance delay with %lu ms already elapsed", elapsedClearance);
+            }
+            break;
+            
+        case BridgeState::CLOSING:
+            // Resume closing bridge - reissue command
+            LOG_INFO(Logger::TAG_FSM, "Resuming CLOSING - reissuing LOWER_BRIDGE command");
+            issueCommand(CommandTarget::MOTOR_CONTROL, CommandAction::LOWER_BRIDGE);
+            break;
+            
+        case BridgeState::RESUMING_TRAFFIC:
+            // Resume traffic resumption - reissue command
+            LOG_INFO(Logger::TAG_FSM, "Resuming RESUMING_TRAFFIC - reissuing RESUME_TRAFFIC command");
+            issueCommand(CommandTarget::SIGNAL_CONTROL, CommandAction::RESUME_TRAFFIC);
+            break;
+            
+        case BridgeState::FAULT:
+            // Maintain FAULT state
+            LOG_WARN(Logger::TAG_FSM, "Recovered in FAULT state - staying in FAULT");
+            break;
+            
+        case BridgeState::MANUAL_MODE:
+        case BridgeState::MANUAL_OPENING:
+        case BridgeState::MANUAL_OPEN:
+        case BridgeState::MANUAL_CLOSING:
+        case BridgeState::MANUAL_CLOSED:
+            // Manual mode - reset to IDLE for safety
+            LOG_WARN(Logger::TAG_FSM, "Recovered during manual operation (%s) - resetting to IDLE", 
+                     stateName(recoveredState));
+            resetBoatCycleState();
+            changeState(BridgeState::IDLE);
+            issueCommand(CommandTarget::CONTROLLER, CommandAction::RESET_TO_IDLE_STATE);
+            break;
+            
+        default:
+            LOG_ERROR(Logger::TAG_FSM, "Unknown recovered state - forcing IDLE");
+            changeState(BridgeState::IDLE);
+            break;
+    }
+    
+    // Publish state change event for monitoring (without changing state again)
+    auto* stateChangeData = new StateChangeData(m_currentState, m_previousState);
+    m_eventBus.publish(BridgeEvent::STATE_CHANGED, stateChangeData);
+    
+    // Clear recovery data after processing
+    if (m_powerRecovery != nullptr) {
+        m_powerRecovery->clearRecoveryData();
+    }
+}
+
+PowerRecovery::RecoveryData BridgeStateMachine::getCurrentRecoveryData() const {
+    PowerRecovery::RecoveryData data;
+    data.currentState = m_currentState;
+    data.previousState = m_previousState;
+    data.boatCycleActive = boatCycleActive_;
+    data.stateEntryTime = m_stateEntryTime;
+    
+    // Convert BoatSide enum to uint8_t
+    if (activeBoatSide_ == BoatSide::LEFT) {
+        data.activeBoatSide = 1;
+    } else if (activeBoatSide_ == BoatSide::RIGHT) {
+        data.activeBoatSide = 2;
+    } else {
+        data.activeBoatSide = 0;
+    }
+    
+    // Save extended timing state
+    data.openingStateEntryTime = openingStateEntryTime_;
+    data.boatClearanceTime = boatClearanceTime_;
+    data.waitingToClearBeforeClose = waitingToClearBeforeClose_;
+    data.oppositeSideDetectedDuringClearance = oppositeSideDetectedDuringClearance_;
+    data.beamBreakActive = beamBreakActive_;
+    
+    // Convert PendingLowerRequest enum to uint8_t
+    if (pendingLowerRequest_ == PendingLowerRequest::AUTO) {
+        data.pendingLowerRequest = 1;
+    } else if (pendingLowerRequest_ == PendingLowerRequest::MANUAL) {
+        data.pendingLowerRequest = 2;
+    } else {
+        data.pendingLowerRequest = 0;
+    }
+    
+    return data;
 }
 
 void BridgeStateMachine::handleEvent(const BridgeEvent& event) {
@@ -451,6 +640,12 @@ void BridgeStateMachine::changeState(BridgeState newState) {
     
     LOG_INFO(Logger::TAG_FSM, "State changed from %s to %s",
              stateName(m_previousState), stateName(m_currentState));
+    
+    // Save extended state to NVS for power failure recovery
+    if (m_powerRecovery != nullptr) {
+        PowerRecovery::RecoveryData data = getCurrentRecoveryData();
+        m_powerRecovery->saveExtendedState(data);
+    }
     
     // Publish state change event for monitoring systems
     auto* stateChangeData = new StateChangeData(m_currentState, m_previousState);

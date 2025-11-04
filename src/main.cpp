@@ -13,6 +13,7 @@
 #include "DetectionSystem.h"
 #include "ConsoleCommands.h"
 #include "SafetyManager.h"
+#include "PowerRecovery.h"
 #include "credentials.h"
 #include "Logger.h"
 #include "SafetyManager.h"
@@ -42,6 +43,9 @@ WebSocketServer wss(80, stateWriter, systemCommandBus, systemEventBus, detection
 
 // SafetyManager monitorint components
 SafetyManager safetyManager(systemEventBus, systemCommandBus);
+
+// Power failure recovery system
+PowerRecovery powerRecovery;
 
 // Console router
 ConsoleCommands console(motorControl, detectionSystem, systemEventBus, signalControl, safetyManager);
@@ -124,6 +128,10 @@ void setup() {
     
     pinMode(LED_BUILTIN, OUTPUT);
     
+    // Initialise power recovery system FIRST
+    LOG_INFO(Logger::TAG_SYS, "Initialising Power Recovery System...");
+    powerRecovery.begin();
+    
     LOG_INFO(Logger::TAG_SYS, "Initialising EventBus and CommandBus...");
     LOG_INFO(Logger::TAG_SYS, "Initialising subsystems...");
 
@@ -144,6 +152,39 @@ void setup() {
     
     LOG_INFO(Logger::TAG_FSM, "Initialising State Machine...");
     stateMachine.begin();
+    
+    // Connect power recovery system to state machine
+    stateMachine.setPowerRecovery(&powerRecovery);
+    
+    // Check for power failure recovery
+    if (powerRecovery.hasRecoveryData()) {
+        PowerRecovery::RecoveryData recoveryData = powerRecovery.getRecoveryData();
+        LOG_WARN(Logger::TAG_SYS, "========================================");
+        LOG_WARN(Logger::TAG_SYS, "POWER FAILURE DETECTED - RECOVERING...");
+        LOG_WARN(Logger::TAG_SYS, "Boot Count: %u", powerRecovery.getBootCount());
+        LOG_WARN(Logger::TAG_SYS, "========================================");
+        
+        // Check for crash loop (repeated rapid boots)
+        if (powerRecovery.isInCrashLoop()) {
+            LOG_ERROR(Logger::TAG_SYS, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            LOG_ERROR(Logger::TAG_SYS, "CRASH LOOP DETECTED - ENTERING FAULT STATE");
+            LOG_ERROR(Logger::TAG_SYS, "Repeated power failures during operation");
+            LOG_ERROR(Logger::TAG_SYS, "Possible hardware fault or unstable power");
+            LOG_ERROR(Logger::TAG_SYS, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            
+            // Force to FAULT state instead of attempting recovery
+            // This prevents potential hardware damage from repeated crash-and-retry
+            stateMachine.begin();  // Start fresh in IDLE
+            auto* faultData = new SimpleEventData(BridgeEvent::FAULT_DETECTED);
+            systemEventBus.publish(BridgeEvent::FAULT_DETECTED, faultData, EventPriority::EMERGENCY);
+            
+            // Clear recovery data to reset boot counter on next successful operation
+            powerRecovery.clearRecoveryData();
+        } else {
+            // Normal recovery - attempt to resume operation
+            stateMachine.recoverFromPowerFailure(recoveryData);
+        }
+    }
     
     LOG_INFO(Logger::TAG_WS, "Configuring network services...");
     wss.configureWiFi(WIFI_SSID, WIFI_PASSWORD);
